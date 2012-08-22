@@ -1,0 +1,25 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <link rel="stylesheet" href="main.css">
+    <script type="text/javascript" src="KVKit.js" charset="utf-8"></script>
+    <script type="text/javascript" src="main.js" charset="utf-8"></script>
+</head>
+<body onload="load()">
+<div id='display'></div>
+<br/>
+<br/>
+UUID <input id="uuidInput" onclick="this.value=''" value="Id of record to delete"/> attribute <input id="attNameInput" onclick="this.value=''" value="an attribute name"/> value <input id="attValueInput" onclick="this.value=''" value="attribute value"/>
+<br/></br>
+<input type = 'button' value="Add a Person" onclick="addPerson()" />
+<input type = 'button' value="Get a Person using Id" onclick="getPerson()" />
+<input type = 'button' value="Get a Person using Template" onclick="getByTemplate()" />
+<br/>
+<input type='button' value="Modify Person" onclick="modifyPerson()"/>
+<input type='button' value="Delete Person" onclick="deletePerson()"/>
+<input type='button' value="Clear Display" onclick="document.getElementById('display').innerText = ''"/>
+
+
+</body>
+</html>
