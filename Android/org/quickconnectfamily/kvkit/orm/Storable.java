@@ -24,9 +24,11 @@ package org.quickconnectfamily.kvkit.orm;
 
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
@@ -310,10 +312,47 @@ public class Storable{
 		return;
 	}
 	
-	private void populateIfNeeded(String attributeName, Object attribute){
+	protected void loadIfNeeded(String attributeName) throws KVKitORMException{
 		/*
 		 * if the attribute is null do the query and set the attribute
 		 */
+		try {
+			Field aField = this.getClass().getDeclaredField(attributeName);
+			Object anAttribute = aField.get(this);
+			boolean shouldLoad = false;
+			if(anAttribute == null){
+				shouldLoad = true;
+			}
+			else if(anAttribute instanceof Collection || anAttribute instanceof Map){
+				Method sizeMethod = anAttribute.getClass().getDeclaredMethod("size", null);
+				Object result = sizeMethod.invoke(anAttribute, null);
+				int theSize = ((Integer)result).intValue();
+				if(theSize == 0){
+					shouldLoad = true;
+				}
+			}
+			if(shouldLoad){
+				load(aField);
+			}
+		} catch (Exception e) {
+			throw new KVKitORMException(e);
+		}
+	}
+	
+	protected void load(String attributeName) throws KVKitORMException {
+		/*
+		 * force a load regardless of existing data
+		 */
+		try {
+			Field anAttribute = this.getClass().getDeclaredField(attributeName);
+			load(anAttribute);
+		} catch (Exception e) {
+			throw new KVKitORMException(e);
+		}
+	}
+	
+	private void load(Field anAttribute){
+		Class attributeType = anAttribute.getType();
 	}
 	
 
