@@ -22,13 +22,20 @@
  */
 package org.quickconnectfamily.kvkit.orm;
 
-public class InvalidValueException extends Exception {
-
-	private static final long serialVersionUID = 1864425943128342524L;
-
-	public InvalidValueException(String detailMessage) {
-		super(detailMessage);
-		// TODO Auto-generated constructor stub
+/*
+ * KVK constants are used in the build method. A list of any number of parameters will work.
+ * Only KVK constants, numbers, strings, etc. should be used. Not references to UI elements, collections, etc.
+ * If an element of a strange type is found an exception will be thrown at run time.
+ */
+public class KVKitComparison {
+	
+	Object[] comparisonList;
+	
+	public static KVKitComparison  build(Object ...elements){
+		//need to do validity check here before proceeding.
+		KVKitComparison aComparison = new KVKitComparison();
+		aComparison.comparisonList = elements;
+		return aComparison;
 	}
-
+	
 }

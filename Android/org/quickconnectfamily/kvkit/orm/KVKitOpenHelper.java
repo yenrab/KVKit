@@ -25,6 +25,7 @@ package org.quickconnectfamily.kvkit.orm;
 import android.content.Context;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
+import android.os.Looper;
 
 public class KVKitOpenHelper extends SQLiteOpenHelper {
 	public KVKitOpenHelper(Context context, String name, int version) {
@@ -33,14 +34,6 @@ public class KVKitOpenHelper extends SQLiteOpenHelper {
 
 	@Override
 	public void onCreate(SQLiteDatabase theDb) {
-		theDb.beginTransaction();
-		try{
-			theDb.execSQL("CREATE TABLE IF NOT EXISTS relationship (parent_uuid, child_uuid, child_table_name, array_value)");
-		}
-		catch(Exception e){
-			
-		}
-		theDb.endTransaction();
 	}
 
 	@Override
