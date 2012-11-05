@@ -31,14 +31,12 @@ import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Map;
 import java.util.Queue;
 import java.util.WeakHashMap;
-import java.util.concurrent.ConcurrentLinkedQueue;
 
 import org.quickconnectfamily.kvkit.KVKitOnMainThreadException;
 
@@ -51,7 +49,6 @@ public class KVKitORM {
 	private WeakHashMap<Thread,Queue<Storable>> storableQueues = null;
 	private HashMap<String,WeakReference<Storable>>loadedStorables = null;
 	private KVKitOpenHelper theHelper = null;
-	private boolean started;
 	
 	static KVKitORM theKVKit = null;
 	
@@ -666,12 +663,12 @@ public class KVKitORM {
 							}
 							else if(aField.getType().isAssignableFrom(BigDecimal.class)){
 								String decimalAsString = resultCursor.getString(i);
-								Constructor theConstructor = aField.getType().getDeclaredConstructor(String.class);
+								Constructor<?> theConstructor = aField.getType().getDeclaredConstructor(String.class);
 								aField.set(aStorable, theConstructor.newInstance(decimalAsString));
 							}
 							else if(aField.getType().isAssignableFrom(BigInteger.class)){
 								String integerAsString = resultCursor.getString(i);
-								Constructor theConstructor = aField.getType().getDeclaredConstructor(String.class);
+								Constructor<?> theConstructor = aField.getType().getDeclaredConstructor(String.class);
 								aField.set(aStorable, theConstructor.newInstance(integerAsString));
 							}
 							else{

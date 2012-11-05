@@ -33,7 +33,6 @@ import java.sql.Date;
 import java.util.AbstractCollection;
 import java.util.AbstractMap;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -106,11 +105,10 @@ public class Storable{
 				createTableBuilder.append(className);
 				createTableBuilder.append(" (");
 			}
-			Iterator iterator = theAttributes.keySet().iterator();  
+			Iterator<String> iterator = theAttributes.keySet().iterator();  
 			   //System.out.println("existing attributes");
 			while (iterator.hasNext()) {  
 			   String key = iterator.next().toString();  
-			   String value = theAttributes.get(key).toString();  
 			   
 			   //System.out.println(key + " " + value);  
 			} 
@@ -268,7 +266,6 @@ public class Storable{
 						}
 					}
 					else if(value instanceof Map){
-						String attributeId = UUID.randomUUID().toString();
 						Map<String,Object> valueMap = (Map<String,Object>)value;
 						Set<Map.Entry<String, Object>> theEntries = valueMap.entrySet();
 						Iterator<Map.Entry<String, Object>> entryIt = theEntries.iterator();
@@ -332,7 +329,7 @@ public class Storable{
 			Field theField, ContentValues collectionElementInsertionValues,
 			ContentValues parentChildInsertionValues, Object aValue) {
 
-		Class attributeType = aValue.getClass();
+		Class<? extends Object> attributeType = aValue.getClass();
 		String id = UUID.randomUUID().toString();
 		parentChildInsertionValues.put("parent_fk", this.theUUID);
 		parentChildInsertionValues.put("child_fk", id);
@@ -424,15 +421,14 @@ public class Storable{
 				whereBuilder.append("id=?");
 			}
 			String tableName = currentClass.getCanonicalName().replace('.', '_');
-			String[] params = {this.getUUID()};
-			int numDeleted = theDb.delete(tableName, whereBuilder.toString(), idsToRemove);
+			theDb.delete(tableName, whereBuilder.toString(), idsToRemove);
 			//System.out.println("deleted "+numDeleted+" records.");
 			currentClass = currentClass.getSuperclass();
 		}
 		
 	}
 
-
+/*
 	private ContentValues addValue(Object value, ContentValues arrayValues) throws KVKitORMException {
 	
 		if(value instanceof Storable){
@@ -452,13 +448,13 @@ public class Storable{
 		}
 		return arrayValues;
 	}
-	
+	*/
 	private void collectAttributes(Class<?> aClass, HashMap<String,Object[]> allAttributes) throws KVKitORMException{
 		//System.out.println("collecting attributes for: "+aClass.getCanonicalName());
 		/*
 		 * get the uuid that is used as the common id across the inheritance structure of the tables
 		 */
-		for(Class currentClass = aClass; currentClass != null; currentClass = currentClass.getSuperclass()){
+		for(Class<?> currentClass = aClass; currentClass != null; currentClass = currentClass.getSuperclass()){
 			if(currentClass != Storable.class){
 				continue;
 			}
@@ -501,13 +497,13 @@ public class Storable{
 		return;
 	}
 	
-	private Field findContainingClass( Class aPotentialClass, String attributeName){
+	private Field findContainingClass( Class<?> aPotentialClass, String attributeName){
 		Field resultField = null;
 		try{
 			resultField = aPotentialClass.getDeclaredField(attributeName);
 		}
 		catch(NoSuchFieldException e){
-			Class parentClass = aPotentialClass.getSuperclass();
+			Class<?> parentClass = aPotentialClass.getSuperclass();
 			if(parentClass != Storable.class && parentClass != null){
 				resultField = findContainingClass(parentClass, attributeName);
 			}
@@ -538,8 +534,8 @@ public class Storable{
 				load(aField);
 			}
 			else if(anAttribute instanceof Collection || anAttribute instanceof Map){
-				Method sizeMethod = anAttribute.getClass().getDeclaredMethod("size", null);
-				Object result = sizeMethod.invoke(anAttribute, null);
+				Method sizeMethod = anAttribute.getClass().getDeclaredMethod("size", (Class<?>[])null);
+				Object result = sizeMethod.invoke(anAttribute, (Object[])null);
 				int theSize = ((Integer)result).intValue();
 				if(theSize == 0){
 					shouldLoad = true;
@@ -631,7 +627,6 @@ public class Storable{
 				//AbstractCollection resultCollection = (AbstractCollection) attributeType.newInstance();
 				
 				String parentStorableTableName = this.getClass().getCanonicalName().replace('.', '_');
-				String childStorableTableName = attributeType.getCanonicalName().replace('.', '_');
 				/*
 				 *
 				 * 					Table							Table						Table
@@ -684,7 +679,6 @@ public class Storable{
 				//AbstractCollection resultCollection = (AbstractCollection) attributeType.newInstance();
 				
 				String parentStorableTableName = this.getClass().getCanonicalName().replace('.', '_');
-				String childStorableTableName = attributeType.getCanonicalName().replace('.', '_');
 				/*
 				 *
 				 * 					Table							Table						Table
@@ -707,14 +701,14 @@ public class Storable{
 				//System.out.println("number found: "+theCursor.getCount());
 				
 				
-				AbstractCollection resultCollection = null;
+				AbstractCollection<Object> resultCollection = null;
 				while(theCursor.moveToNext()){
 					if(resultCollection == null){
 						if(attributeType.isArray()){
-							resultCollection = new ArrayList();
+							resultCollection = new ArrayList<Object>();
 						}
 						else{
-							resultCollection = (AbstractCollection) anAttribute.getType().newInstance();
+							resultCollection = (AbstractCollection<Object>) anAttribute.getType().newInstance();
 						}
 					}
 					buildMulitAttributeElement(theDb,
@@ -753,7 +747,7 @@ public class Storable{
 	private void buildMulitAttributeElement(SQLiteDatabase theDb,
 			Field anAttribute, String attributeName,
 			String parentStorableTableName, Cursor theCursor,
-			AbstractCollection resultCollection, AbstractMap resultMap) throws InstantiationException,
+			AbstractCollection<Object> resultCollection, AbstractMap<String, Object> resultMap) throws InstantiationException,
 			IllegalAccessException, ClassNotFoundException, KVKitORMException,
 			NoSuchMethodException, InvocationTargetException {
 		
@@ -764,7 +758,7 @@ public class Storable{
 		String textValue = theCursor.getString(1);
 		int numberAsInt = theCursor.getInt(2);
 		double numberAsDouble  = theCursor.getDouble(2);
-		Class instanceType = Class.forName(type);
+		Class<?> instanceType = Class.forName(type);
 		//System.out.println("index: "+theCursor.getInt(3)+" found another "+instanceType+" text "+textValue+" number "+numberAsDouble);
 		if(Storable.class.isAssignableFrom(instanceType)){
 			//System.out.println("adding to results a Storable of type: "+instanceType.getName());
@@ -813,7 +807,7 @@ public class Storable{
 			//System.out.println("numVal "+numberValue+" "+numberValue.toString());
 			//System.out.println("textVal "+textValue);
 			if(Integer.class.isAssignableFrom(instanceType)){
-				Constructor theConstructor = instanceType.getConstructor(int.class);
+				Constructor<?> theConstructor = instanceType.getConstructor(int.class);
 				Object builtValue = theConstructor.newInstance(numberAsInt);
 				if(resultCollection != null){
 					resultCollection.add(builtValue);
@@ -823,7 +817,7 @@ public class Storable{
 				}
 			}
 			else if(Long.class.isAssignableFrom(instanceType)){
-				Constructor theConstructor = instanceType.getConstructor(long.class);
+				Constructor<?> theConstructor = instanceType.getConstructor(long.class);
 				Object builtValue = theConstructor.newInstance(theCursor.getLong(2));
 				if(resultCollection != null){
 					resultCollection.add(builtValue);
@@ -833,7 +827,7 @@ public class Storable{
 				}
 			}
 			else if(Short.class.isAssignableFrom(instanceType)){
-				Constructor theConstructor = instanceType.getConstructor(short.class);
+				Constructor<?> theConstructor = instanceType.getConstructor(short.class);
 				Object builtValue = theConstructor.newInstance(theCursor.getShort(2));
 				if(resultCollection != null){
 					resultCollection.add(builtValue);
@@ -843,7 +837,7 @@ public class Storable{
 				}
 			}
 			else if(Byte.class.isAssignableFrom(instanceType)){
-				Constructor theConstructor = instanceType.getConstructor(byte.class);
+				Constructor<?> theConstructor = instanceType.getConstructor(byte.class);
 				Object builtValue = theConstructor.newInstance((byte)numberAsInt);
 				if(resultCollection != null){
 					resultCollection.add(builtValue);
@@ -853,7 +847,7 @@ public class Storable{
 				}
 			}
 			else if(Double.class.isAssignableFrom(instanceType)){
-				Constructor theConstructor = instanceType.getConstructor(double.class);
+				Constructor<?> theConstructor = instanceType.getConstructor(double.class);
 				Object builtValue = theConstructor.newInstance(numberAsDouble);
 				if(resultCollection != null){
 					resultCollection.add(builtValue);
@@ -863,7 +857,7 @@ public class Storable{
 				}
 			}
 			else if(Float.class.isAssignableFrom(instanceType)){
-				Constructor theConstructor = instanceType.getConstructor(float.class);
+				Constructor<?> theConstructor = instanceType.getConstructor(float.class);
 				Object builtValue = theConstructor.newInstance(theCursor.getFloat(2));
 				if(resultCollection != null){
 					resultCollection.add(builtValue);
@@ -873,7 +867,7 @@ public class Storable{
 				}
 			}
 			else if(BigDecimal.class.isAssignableFrom(instanceType)){
-				Constructor theConstructor = instanceType.getConstructor(String.class);
+				Constructor<?> theConstructor = instanceType.getConstructor(String.class);
 				Object builtValue = theConstructor.newInstance(textValue);
 				if(resultCollection != null){
 					resultCollection.add(builtValue);
@@ -883,7 +877,7 @@ public class Storable{
 				}
 			}
 			else if(BigInteger.class.isAssignableFrom(instanceType)){
-				Constructor theConstructor = instanceType.getConstructor(String.class);
+				Constructor<?> theConstructor = instanceType.getConstructor(String.class);
 				Object builtValue = theConstructor.newInstance(textValue);
 				if(resultCollection != null){
 					resultCollection.add(builtValue);
@@ -896,7 +890,7 @@ public class Storable{
 		}
 		else if(String.class.isAssignableFrom(instanceType)){
 			//System.out.println("adding a String of type: "+instanceType.getName()+" class "+textValue.getClass()+" value "+textValue);
-			Constructor theConstructor = instanceType.getConstructor(String.class);
+			Constructor<?> theConstructor = instanceType.getConstructor(String.class);
 			Object builtValue = theConstructor.newInstance(textValue);
 			if(resultCollection != null){
 				resultCollection.add(builtValue);
@@ -907,7 +901,7 @@ public class Storable{
 		}
 		else if(Boolean.class.isAssignableFrom(instanceType)){
 			//System.out.println("adding a boolean of type: "+instanceType.getName());
-			Constructor theConstructor = instanceType.getConstructor(boolean.class);
+			Constructor<?> theConstructor = instanceType.getConstructor(boolean.class);
 			boolean boolValue = false;
 			//System.out.println("********************bool int value "+numberValue.intValue()+" *******************");
 			if(numberAsInt == 1){
@@ -922,9 +916,8 @@ public class Storable{
 			}
 		}
 		else if(Date.class.isAssignableFrom(instanceType)){
-			long timeInMillis = theCursor.getLong(2);
 			//System.out.println("adding a date of type: "+instanceType.getName());
-			Constructor theConstructor = instanceType.getConstructor(long.class);
+			Constructor<?> theConstructor = instanceType.getConstructor(long.class);
 			Object builtValue = theConstructor.newInstance(numberAsInt);
 			if(resultCollection != null){
 				resultCollection.add(builtValue);
@@ -936,7 +929,7 @@ public class Storable{
 		else if(Character.class.isAssignableFrom(instanceType)){
 			//System.out.println("text_value is: "+theCursor.getString(1));
 			//System.out.println("adding a character of type: "+instanceType.getName());
-			Constructor theConstructor = instanceType.getConstructor(char.class);
+			Constructor<?> theConstructor = instanceType.getConstructor(char.class);
 			char[] aCharBuffer = new char[2];
 			//System.out.println(Arrays.toString(aCharBuffer));
 			theCursor.getString(1).getChars(0, 1, aCharBuffer, 0);
@@ -987,7 +980,4 @@ public class Storable{
 		}
 		return true;
 	}
-	
-	
-
 }
