@@ -41,13 +41,14 @@ import java.util.Set;
 import java.util.UUID;
 
 import org.quickconnectfamily.kvkit.KVKitOnMainThreadException;
+import org.quickconnectfamily.kvkit.Storable;
 
 import android.content.ContentValues;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.os.Looper;
 
-public class Storable{
+public class ORMStorable implements Storable{
 	/**
 	 * 
 	 */
@@ -55,7 +56,7 @@ public class Storable{
 	private static HashMap<Class<?>,Boolean> tablesExist = new HashMap<Class<?>,Boolean>();
 	
 	
-	public Storable() {
+	public ORMStorable() {
 		this.theUUID = UUID.randomUUID().toString();
 	}
 
@@ -87,7 +88,7 @@ public class Storable{
 
 		HashMap<String,Object[]> theAttributes = new HashMap<String,Object[]>();
 		Class<?> currentClass = this.getClass();
-		while(currentClass != Storable.class){
+		while(currentClass != ORMStorable.class){
 			theAttributes.clear();
 			//System.out.println("storing "+currentClass.getCanonicalName()+" with UUID: "+currentClass.getCanonicalName());
 			collectAttributes(currentClass, theAttributes);
@@ -143,7 +144,7 @@ public class Storable{
 								|| theField.getType().isAssignableFrom(Character.class)){
 							createTableBuilder.append(" NUMERIC ");
 						}
-						else if(theField.getType().isAssignableFrom(Storable.class)){
+						else if(theField.getType().isAssignableFrom(ORMStorable.class)){
 							//dWill add an entry into the relationship table
 							createTableBuilder.append(" TEXT ");
 						}
@@ -204,14 +205,14 @@ public class Storable{
 					else if(value instanceof Character){
 						theValues.put(anAttributeName, String.valueOf((Character)value));
 					}
-					else if(value instanceof Storable){
+					else if(value instanceof ORMStorable){
 						//((Storable)value).store(theDb);//While this line may save a few lines of code by the programmer it will 
 						// cause a large amount of wasted CPU cycles.
 						//System.out.println("1 "+value.getClass().getCanonicalName()+" storable has uuid: "+((Storable)value).theUUID);
 						
 						ContentValues relationshipValues = new ContentValues(2);
 						relationshipValues.put("parent_fk", this.theUUID);
-						relationshipValues.put("child_fk", ((Storable) value).getUUID());
+						relationshipValues.put("child_fk", ((ORMStorable) value).getUUID());
 						relationshipValues.put("attribute_name", anAttributeName);
 						relationshipValues.put("attribute_type", value.getClass().getCanonicalName());
 						//System.out.println("storing into parent_child: "+relationshipValues.toString());
@@ -361,11 +362,11 @@ public class Storable{
 		else if(String.class.isAssignableFrom(attributeType)){
 				collectionElementInsertionValues.put("text_value", (String)aValue);	
 		}
-		else if(Storable.class.isAssignableFrom(attributeType)){
+		else if(ORMStorable.class.isAssignableFrom(attributeType)){
 			//System.out.println("Adding: "+attributeType.getCanonicalName()+" storable has uuid: "+((Storable)aValue).theUUID);
-			parentChildInsertionValues.put("child_fk", ((Storable)aValue).theUUID);
-			collectionElementInsertionValues.put("id", ((Storable)aValue).theUUID);
-			collectionElementInsertionValues.put("text_value", ((Storable)aValue).theUUID);	
+			parentChildInsertionValues.put("child_fk", ((ORMStorable)aValue).theUUID);
+			collectionElementInsertionValues.put("id", ((ORMStorable)aValue).theUUID);
+			collectionElementInsertionValues.put("text_value", ((ORMStorable)aValue).theUUID);	
 		}
 		else{
 			//System.out.println("storing unknown type: "+value.getClass());
@@ -396,7 +397,7 @@ public class Storable{
 			return;//ignore removal of Storables from tables if none of that type have ever been created.
 		}
 		//delete records from each of the tables in the inheritance.
-		while(currentClass != Storable.class){
+		while(currentClass != ORMStorable.class){
 			String tableName = currentClass.getCanonicalName().replace('.', '_');
 			String[] params = {this.getUUID()};
 			int numDeleted = theDb.delete(tableName, "id=?", params);
@@ -412,7 +413,7 @@ public class Storable{
 		if(exists == null){
 			return;//ignore removal of Storables from tables if none of that type have ever been created.
 		}
-		while(currentClass != Storable.class){
+		while(currentClass != ORMStorable.class){
 			StringBuilder whereBuilder = new StringBuilder();
 			for(int i = 0; i < idsToRemove.length; i++){
 				if(i != 0){
@@ -455,7 +456,7 @@ public class Storable{
 		 * get the uuid that is used as the common id across the inheritance structure of the tables
 		 */
 		for(Class<?> currentClass = aClass; currentClass != null; currentClass = currentClass.getSuperclass()){
-			if(currentClass != Storable.class){
+			if(currentClass != ORMStorable.class){
 				continue;
 			}
 			try {
@@ -504,7 +505,7 @@ public class Storable{
 		}
 		catch(NoSuchFieldException e){
 			Class<?> parentClass = aPotentialClass.getSuperclass();
-			if(parentClass != Storable.class && parentClass != null){
+			if(parentClass != ORMStorable.class && parentClass != null){
 				resultField = findContainingClass(parentClass, attributeName);
 			}
 		}
@@ -576,7 +577,7 @@ public class Storable{
 		Class<?> attributeType = anAttribute.getType();
 		String attributeName = anAttribute.getName();
 		//if it is a Storable
-		if(Storable.class.isAssignableFrom(attributeType)){
+		if(ORMStorable.class.isAssignableFrom(attributeType)){
 			String parentStorableTableName = this.getClass().getCanonicalName().replace('.', '_');
 			String childStorableTableName = attributeType.getCanonicalName().replace('.', '_');
 			/*
@@ -607,7 +608,7 @@ public class Storable{
 			try {
 				if(theCursor.getCount() > 0){
 					theCursor.moveToNext();
-					Storable aStorable = KVKitORM.getInstance().buildStorableFromRecord(theCursor, (Class<? extends Storable>) attributeType);
+					ORMStorable aStorable = KVKitORM.getInstance().buildStorableFromRecord(theCursor, (Class<? extends ORMStorable>) attributeType);
 					anAttribute.setAccessible(true);
 					anAttribute.set(this, aStorable);
 				}
@@ -760,7 +761,7 @@ public class Storable{
 		double numberAsDouble  = theCursor.getDouble(2);
 		Class<?> instanceType = Class.forName(type);
 		//System.out.println("index: "+theCursor.getInt(3)+" found another "+instanceType+" text "+textValue+" number "+numberAsDouble);
-		if(Storable.class.isAssignableFrom(instanceType)){
+		if(ORMStorable.class.isAssignableFrom(instanceType)){
 			//System.out.println("adding to results a Storable of type: "+instanceType.getName());
 			String aUUID = textValue;
 			//load a storable that has aUUID as its' UUID.
@@ -788,7 +789,7 @@ public class Storable{
 			try {
 				if(instanceCursor.getCount() > 0){
 					instanceCursor.moveToNext();
-					Storable aStorable = KVKitORM.getInstance().buildStorableFromRecord(instanceCursor, (Class<? extends Storable>) instanceType);
+					ORMStorable aStorable = KVKitORM.getInstance().buildStorableFromRecord(instanceCursor, (Class<? extends ORMStorable>) instanceType);
 					//System.out.println("adding to result collection: "+aStorable);
 					if(resultCollection != null){
 						resultCollection.add(aStorable);
@@ -967,10 +968,10 @@ public class Storable{
 		if (obj == null) {
 			return false;
 		}
-		if (!(obj instanceof Storable)) {
+		if (!(obj instanceof ORMStorable)) {
 			return false;
 		}
-		Storable other = (Storable) obj;
+		ORMStorable other = (ORMStorable) obj;
 		if (theUUID == null) {
 			if (other.theUUID != null) {
 				return false;

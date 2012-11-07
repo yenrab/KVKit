@@ -46,16 +46,16 @@ import android.database.sqlite.SQLiteDatabase;
 import android.os.Looper;
 
 public class KVKitORM {
-	private WeakHashMap<Thread,Queue<Storable>> storableQueues = null;
-	private HashMap<String,WeakReference<Storable>>loadedStorables = null;
+	private WeakHashMap<Thread,Queue<ORMStorable>> storableQueues = null;
+	private HashMap<String,WeakReference<ORMStorable>>loadedStorables = null;
 	private KVKitOpenHelper theHelper = null;
 	
 	static KVKitORM theKVKit = null;
 	
 	static{
 		theKVKit = new KVKitORM();
-		theKVKit.loadedStorables = new HashMap<String, WeakReference<Storable>>();
-		theKVKit.storableQueues = new WeakHashMap<Thread,Queue<Storable>>();
+		theKVKit.loadedStorables = new HashMap<String, WeakReference<ORMStorable>>();
+		theKVKit.storableQueues = new WeakHashMap<Thread,Queue<ORMStorable>>();
 	}
 	
 	public static KVKitORM getInstance(){
@@ -90,7 +90,7 @@ public class KVKitORM {
 					//System.out.println("className: "+className);
 					try {
 						Class<?> aClass = Class.forName(className);
-						Storable.addExistingTable(aClass);
+						ORMStorable.addExistingTable(aClass);
 					} catch (ClassNotFoundException e) {
 						throw new InitializationException(e);
 					}
@@ -99,9 +99,9 @@ public class KVKitORM {
 			if(!storableTableExists){
 				/*
 				 *
-				 * 					Table							Table						Table
-				 * 				Parent_Storable_Table			collection_element			parent_child
-				 *				id (TEXT) primary key		id (TEXT) primary key		parent_fk (TEXT) primary key
+				 * 													Table						Table
+				 * 											collection_element			parent_child
+				 *											id (TEXT) primary key		parent_fk (TEXT) primary key
 				 *											text_value (TEXT)			child_fk  (TEXT) primary key
 				 * 											number_value (NUMBER) 		attribute_name (TEXT)
 				 * 											array_order (NUMBER)		attribute_type (TEXT)	
@@ -111,8 +111,8 @@ public class KVKitORM {
 				
 				/*
 				 * 														Table							
-				 * 													Child_Storable_Table	(created with the name of the Storable class)		
-				 * 												theUUID (TEXT) primary key		
+				 * 													Storable_Table	(created with the name of the Storable class)		
+				 * 												id (TEXT) primary key		
 				 * 																			
 				 * 																			
 				 */
@@ -126,9 +126,9 @@ public class KVKitORM {
 		}
 	}
 	
-	private Storable findExistingStorable(String aUUID){
-		Storable foundStorable = null;
-		WeakReference<Storable> aReference = this.loadedStorables.get(aUUID);
+	private ORMStorable findExistingStorable(String aUUID){
+		ORMStorable foundStorable = null;
+		WeakReference<ORMStorable> aReference = this.loadedStorables.get(aUUID);
 		if(aReference != null){
 			//System.out.println("found storable");
 			foundStorable = aReference.get();
@@ -139,14 +139,14 @@ public class KVKitORM {
 		return foundStorable;
 	}
 
-	private void addExistingStorable(Storable aStorable) {
+	private void addExistingStorable(ORMStorable aStorable) {
 		//System.out.println("adding storable: "+aStorable.getUUID());
-		WeakReference<Storable> aReference = new WeakReference<Storable>(aStorable);
+		WeakReference<ORMStorable> aReference = new WeakReference<ORMStorable>(aStorable);
 		this.loadedStorables.put(aStorable.getUUID(), aReference);
 	}
-	private void removeExistingStorable(Storable aStorable){
+	private void removeExistingStorable(ORMStorable aStorable){
 		//System.out.println("removing from pool: "+aStorable.getUUID());
-		WeakReference<Storable> removed = this.loadedStorables.remove(aStorable.getUUID());
+		WeakReference<ORMStorable> removed = this.loadedStorables.remove(aStorable.getUUID());
 		if(removed != null){
 			removed.clear();
 		}
@@ -154,15 +154,15 @@ public class KVKitORM {
 	
 	public void beginMultiStore(){
 		Thread curThread = Thread.currentThread();
-		Queue<Storable> aQueue = this.storableQueues.get(curThread);
+		Queue<ORMStorable> aQueue = this.storableQueues.get(curThread);
 		if(aQueue == null){
-			aQueue = new LinkedList<Storable>();
+			aQueue = new LinkedList<ORMStorable>();
 			this.storableQueues.put(curThread, aQueue);
 		}
 	}
 	
-	public void addToMultiStore(Storable aStorable) {
-		Queue<Storable> aQueue = this.storableQueues.get(Thread.currentThread());
+	public void addToMultiStore(ORMStorable aStorable) {
+		Queue<ORMStorable> aQueue = this.storableQueues.get(Thread.currentThread());
 		if(aQueue == null){
 			beginMultiStore();
 		}
@@ -174,7 +174,7 @@ public class KVKitORM {
 			throw new KVKitOnMainThreadException();
 		}
 		Thread curThread = Thread.currentThread();
-		Queue<Storable> aQueue = this.storableQueues.get(curThread);
+		Queue<ORMStorable> aQueue = this.storableQueues.get(curThread);
 		if(aQueue == null || aQueue.size() == 0){
 			return;
 		}
@@ -185,7 +185,7 @@ public class KVKitORM {
 		Exception failedException = null;
 		try{
 			while(aQueue.size() > 0){
-				Storable aStorable = aQueue.remove();
+				ORMStorable aStorable = aQueue.remove();
 				aStorable.store(theDb);
 			}
 			theDb.setTransactionSuccessful();
@@ -211,7 +211,7 @@ public class KVKitORM {
 	
 	
 	
-	public void store(Storable aStorable) throws KVKitORMException, KVKitClassConfigurationException{
+	public void store(ORMStorable aStorable) throws KVKitORMException, KVKitClassConfigurationException{
 		if (Looper.myLooper() != null && Looper.myLooper() == Looper.getMainLooper()) {
 			throw new KVKitOnMainThreadException();
 		}
@@ -244,11 +244,11 @@ public class KVKitORM {
 		}
 	}
 	
-	public void remove(Storable aStorable) throws KVKitORMException{
+	public void remove(ORMStorable aStorable) throws KVKitORMException{
 		remove(aStorable, false);
 	}
 	
-	public void remove(Storable aStorable, boolean isTemplate) throws KVKitORMException{
+	public void remove(ORMStorable aStorable, boolean isTemplate) throws KVKitORMException{
 		if (Looper.myLooper() != null && Looper.myLooper() == Looper.getMainLooper()) {
 			throw new KVKitOnMainThreadException();
 		}
@@ -259,11 +259,11 @@ public class KVKitORM {
 		}
 		else{
 			//query the objects to remove
-			ArrayList<Storable> found = this.get(aStorable, null);
+			ArrayList<ORMStorable> found = this.get(aStorable, null);
 			//String[]idsToRemove = new String[found.size()];
 			HashMap<String, Boolean>idMap = new HashMap<String,Boolean>();
 			for(int i = 0; i < found.size();i++){
-				Storable aStorableToRemove = found.get(i);
+				ORMStorable aStorableToRemove = found.get(i);
 				if(!idMap.containsKey(aStorableToRemove.getUUID())){
 					idMap.put(aStorableToRemove.getUUID(), true);
 				}
@@ -294,7 +294,7 @@ public class KVKitORM {
 		}
 	}
 	
-	public void remove(Storable anExample, Field[] fieldsToIgnore) throws KVKitORMException{
+	public void remove(ORMStorable anExample, Field[] fieldsToIgnore) throws KVKitORMException{
 		if (Looper.myLooper() != null && Looper.myLooper() == Looper.getMainLooper()) {
 			throw new KVKitOnMainThreadException();
 		}
@@ -306,10 +306,10 @@ public class KVKitORM {
 			ignoreFields = new ArrayList<Field>();
 		}
 		try {
-			Field hiddenStorableField = Storable.class.getDeclaredField("tablesExist");
+			Field hiddenStorableField = ORMStorable.class.getDeclaredField("tablesExist");
 			ignoreFields.add(hiddenStorableField);
 			
-			hiddenStorableField = Storable.class.getDeclaredField("theUUID");
+			hiddenStorableField = ORMStorable.class.getDeclaredField("theUUID");
 			ignoreFields.add(hiddenStorableField);
 		} catch (NoSuchFieldException e) {
 			throw new KVKitORMException(e);
@@ -334,7 +334,7 @@ public class KVKitORM {
 	}
 	
 	//remove any 
-	public void remove(Class<Storable> storableType, String keypath, Object value){
+	public void remove(Class<ORMStorable> storableType, String keypath, Object value){
 		if (Looper.myLooper() != null && Looper.myLooper() == Looper.getMainLooper()) {
 			throw new KVKitOnMainThreadException();
 		}
@@ -342,7 +342,7 @@ public class KVKitORM {
 	}
 	
 	//loads an attribute of the passed storable from the db
-	protected void load(Storable aStorable, Field anAttribute) throws KVKitORMException{
+	protected void load(ORMStorable aStorable, Field anAttribute) throws KVKitORMException{
 		
 		SQLiteDatabase theDb = theHelper.getWritableDatabase();
 		KVKitORMException failedException = null;
@@ -360,18 +360,18 @@ public class KVKitORM {
 		}
 	}
 	//get all objects of type storableType that have a keyPath with the value.
-	public ArrayList<Storable> get(Class<Storable> storableType, String keyPath, String value){
+	public ArrayList<ORMStorable> get(Class<ORMStorable> storableType, String keyPath, String value){
 		if (Looper.myLooper() != null && Looper.myLooper() == Looper.getMainLooper()) {
 			throw new KVKitOnMainThreadException();
 		}
 		return null;
 	}
 	
-	public ArrayList<Storable> get(Storable anExample, String orderByAttributeName) throws KVKitORMException{
+	public ArrayList<ORMStorable> get(ORMStorable anExample, String orderByAttributeName) throws KVKitORMException{
 		return get(anExample, null, orderByAttributeName);
 	}
 	
-	public ArrayList<Storable> get(Storable anExample, Field[] fieldsToIgnore, String orderByAttributeName) throws KVKitORMException{
+	public ArrayList<ORMStorable> get(ORMStorable anExample, Field[] fieldsToIgnore, String orderByAttributeName) throws KVKitORMException{
 		if (Looper.myLooper() != null && Looper.myLooper() == Looper.getMainLooper()) {
 			throw new KVKitOnMainThreadException();
 		}
@@ -386,14 +386,14 @@ public class KVKitORM {
 			ignoreFields = new ArrayList<Field>();
 		}
 		try {
-			Field hiddenStorableField = Storable.class.getDeclaredField("tablesExist");
+			Field hiddenStorableField = ORMStorable.class.getDeclaredField("tablesExist");
 			ignoreFields.add(hiddenStorableField);
 		} catch (NoSuchFieldException e) {
 			throw new KVKitORMException(e);
 		}
 		Field theUUIDField = null;
 		try {
-			theUUIDField = Storable.class.getDeclaredField("theUUID");
+			theUUIDField = ORMStorable.class.getDeclaredField("theUUID");
 			instanceFields.put("theUUID", theUUIDField);
 		} catch (NoSuchFieldException e1) {
 			throw new KVKitORMException(e1);
@@ -416,7 +416,7 @@ public class KVKitORM {
 			if(currentChar > 122){
 				currentChar = 97;
 			}
-			if(anExample.getClass() == Storable.class){
+			if(anExample.getClass() == ORMStorable.class){
 				//System.out.println("done");
 				continue;
 			}
@@ -424,7 +424,7 @@ public class KVKitORM {
 			 * build select clause
 			 */
 			String alias = null;
-			if(currentClass != Storable.class){
+			if(currentClass != ORMStorable.class){
 				if(numForAlias != 1){//isn't first table name for list
 					aliasBuilder.append(", ");
 				}
@@ -437,7 +437,7 @@ public class KVKitORM {
 				inheritanceList.add(alias);
 			}
 			
-			if(currentClass.equals(Storable.class)){
+			if(currentClass.equals(ORMStorable.class)){
 				//System.out.println("at storable class");
 				continue;
 			}
@@ -493,8 +493,8 @@ public class KVKitORM {
 								}
 								//System.out.println("is array");
 							}
-							else if(aField.getType().isAssignableFrom(Storable.class)){
-								valueAsString = ((Storable)aValue).getUUID();
+							else if(aField.getType().isAssignableFrom(ORMStorable.class)){
+								valueAsString = ((ORMStorable)aValue).getUUID();
 								//System.out.println("is storable");
 							}
 							else if(aField.getType().isAssignableFrom(String.class)){
@@ -582,14 +582,14 @@ public class KVKitORM {
 		Cursor resultCursor = theDb.rawQuery(sql, parameterList);
 		//System.out.println("number results: "+resultCursor.getCount());
 		
-		ArrayList<Storable> storables = new ArrayList<Storable>();
+		ArrayList<ORMStorable> storables = new ArrayList<ORMStorable>();
 		//column names match field names
 		String[] columnNames = resultCursor.getColumnNames();
 		while(resultCursor.moveToNext()){
 			//System.out.println("creating a storable.");
 			try {
 				//ArrayList<Field> neededChildren = new ArrayList<Field>();
-				Storable aStorable = (Storable)anExample.getClass().newInstance();
+				ORMStorable aStorable = (ORMStorable)anExample.getClass().newInstance();
 				for(int i = 0; i < columnNames.length; i++){
 					//System.out.println("working column: "+columnNames[i]);
 					String columnName = columnNames[i];
@@ -597,7 +597,7 @@ public class KVKitORM {
 						columnName = "theUUID";
 					}
 					Field aField =  instanceFields.get(columnName);
-					if(Storable.class.isAssignableFrom(aField.getType()) 
+					if(ORMStorable.class.isAssignableFrom(aField.getType()) 
 							|| aField.getType().isArray()
 							|| Collection.class.isAssignableFrom(aField.getType())
 							|| Map.class.isAssignableFrom(aField.getType())){
@@ -649,7 +649,7 @@ public class KVKitORM {
 							//System.out.println("field type: "+aField.getType());
 							boolean isUUID = false;
 							if(aField.getName().equals("theUUID")){
-								Storable foundStorable = findExistingStorable(resultCursor.getString(i));
+								ORMStorable foundStorable = findExistingStorable(resultCursor.getString(i));
 								if(foundStorable != null){
 									//System.out.println("found: "+resultCursor.getString(i));
 									aStorable = foundStorable;
@@ -695,8 +695,8 @@ public class KVKitORM {
 		}
 		return storables;
 	}
-	protected Storable buildStorableFromRecord(Cursor theCursor, Class<? extends Storable>theStorableClass) throws InstantiationException, IllegalAccessException, NoSuchFieldException{
-		Storable result = theStorableClass.newInstance();
+	protected ORMStorable buildStorableFromRecord(Cursor theCursor, Class<? extends ORMStorable>theStorableClass) throws InstantiationException, IllegalAccessException, NoSuchFieldException{
+		ORMStorable result = theStorableClass.newInstance();
 		int numColumns = theCursor.getColumnCount();
 		for(int i = 0; i < numColumns; i++){
 
@@ -705,7 +705,7 @@ public class KVKitORM {
 			//System.out.println("column name: "+fieldName);
 			Field theField = null;
 			if(fieldName.equals("id")){
-				theField = Storable.class.getDeclaredField("theUUID");
+				theField = ORMStorable.class.getDeclaredField("theUUID");
 			}
 			else{
 				theField = theStorableClass.getDeclaredField(fieldName);

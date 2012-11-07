@@ -22,11 +22,11 @@
  */
 package org.quickconnectfamily.kvkit.orm;
 
-public class DeletedStorableError extends Exception {
+public class DeletedStorableException extends Exception {
 
 	private static final long serialVersionUID = 3412653995662343094L;
 
-	public DeletedStorableError(String detailMessage) {
+	public DeletedStorableException(String detailMessage) {
 		super(detailMessage);
 		// TODO Auto-generated constructor stub
 	}
