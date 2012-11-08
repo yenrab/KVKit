@@ -209,7 +209,9 @@ public class KVKitORM {
 		}
 	}
 	
-	
+	public void cleanupMultiStore(Thread aThread){
+		this.storableQueues.remove(aThread);
+	}
 	
 	public void store(ORMStorable aStorable) throws KVKitORMException, KVKitClassConfigurationException{
 		if (Looper.myLooper() != null && Looper.myLooper() == Looper.getMainLooper()) {
