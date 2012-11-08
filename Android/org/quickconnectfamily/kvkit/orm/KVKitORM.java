@@ -38,7 +38,6 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.WeakHashMap;
 
-import org.quickconnectfamily.kvkit.KVKitOnMainThreadException;
 
 import android.app.Application;
 import android.database.Cursor;
