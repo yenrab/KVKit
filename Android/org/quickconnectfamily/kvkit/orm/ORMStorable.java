@@ -37,6 +37,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 import java.util.UUID;
 
@@ -78,7 +79,7 @@ public class ORMStorable implements Storable{
     }
 
 
-	public void store(SQLiteDatabase theDb) throws KVKitORMException, KVKitClassConfigurationException {
+	protected void store(SQLiteDatabase theDb) throws KVKitORMException, KVKitClassConfigurationException {
 		if (Looper.myLooper() != null && Looper.myLooper() == Looper.getMainLooper()) {
 			throw new KVKitOnMainThreadException();
 		}
@@ -229,7 +230,7 @@ public class ORMStorable implements Storable{
 						/*
 						 *
 						 * 					Table							Table						Table
-						 * 				Parent_Storable_Table			collection_element			parent_child
+						 * 				Parent_Storable_Table			child_element			parent_child
 						 *				id (TEXT) primary key		id (TEXT) primary key		parent_fk (TEXT) primary key
 						 *											text_value (TEXT)			child_fk  (TEXT) primary key
 						 * 											number_value (NUMBER) 		attribute_name (TEXT) primary key
@@ -376,7 +377,7 @@ public class ORMStorable implements Storable{
 		}
 		//System.out.println("collection element values: "+collectionElementInsertionValues);
 		//System.out.println("parent child values: "+parentChildInsertionValues);
-		theDb.insertWithOnConflict("collection_element", null, collectionElementInsertionValues, SQLiteDatabase.CONFLICT_REPLACE);
+		theDb.insertWithOnConflict("child_element", null, collectionElementInsertionValues, SQLiteDatabase.CONFLICT_REPLACE);
 		theDb.insertWithOnConflict("parent_child", null, parentChildInsertionValues, SQLiteDatabase.CONFLICT_REPLACE);
 	}
 	
@@ -391,66 +392,132 @@ public class ORMStorable implements Storable{
 		if (Looper.myLooper() != null && Looper.myLooper() == Looper.getMainLooper()) {
 			throw new KVKitOnMainThreadException();
 		}
-		//System.out.println(" storable removing");
+		//System.out.println("removing storable "+this.toString());
 		Class<?> currentClass = this.getClass();
 		Boolean exists = tablesExist.get(currentClass);
 		if(exists == null){
 			return;//ignore removal of Storables from tables if none of that type have ever been created.
 		}
-		//delete records from each of the tables in the inheritance.
-		while(currentClass != ORMStorable.class){
-			String tableName = currentClass.getCanonicalName().replace('.', '_');
-			String[] params = {this.getUUID()};
-			int numDeleted = theDb.delete(tableName, "id=?", params);
-			//System.out.println("deleted "+numDeleted+" records.");
-			currentClass = currentClass.getSuperclass();
-		}
-	}
-	
-	protected void removeByIds(SQLiteDatabase theDb, String[] idsToRemove){
-		//System.out.println(" storable removing by id");
-		Class<?> currentClass = this.getClass();
-		Boolean exists = tablesExist.get(currentClass);
-		if(exists == null){
-			return;//ignore removal of Storables from tables if none of that type have ever been created.
-		}
-		while(currentClass != ORMStorable.class){
+		//start a transaction or nested transaction
+		theDb.beginTransaction();
+		
+
+		/*
+		 * this should remove all data from the database that refers to the relationships for this instance
+		 * except any ORMStorables or ORMStorables in Arrays/Collections/Maps
+		 */
+		//using the parent id query the parent_child table to find associated child id's
+		String sql = "SELECT child_fk from parent_child where parent_fk=?";
+		String[] selectionArgs = {this.theUUID};
+		//System.out.println("sql: "+sql);
+		//System.out.println("params: "+Arrays.toString(selectionArgs));
+		Cursor theCursor = theDb.rawQuery(sql, selectionArgs);
+		int numRecords = theCursor.getCount();
+		if(numRecords > 0){
 			StringBuilder whereBuilder = new StringBuilder();
-			for(int i = 0; i < idsToRemove.length; i++){
-				if(i != 0){
-					whereBuilder.append(" OR ");
+			String[] childUUIDs = new String[theCursor.getCount()];
+			int cnt = 0;
+			while(theCursor.moveToNext()){
+				if(cnt != 0){
+					whereBuilder.append(" OR");
 				}
-				whereBuilder.append("id=?");
+				String childUUID = theCursor.getString(0);
+				whereBuilder.append(" id=?");
+				cnt++;
 			}
-			String tableName = currentClass.getCanonicalName().replace('.', '_');
-			theDb.delete(tableName, whereBuilder.toString(), idsToRemove);
-			//System.out.println("deleted "+numDeleted+" records.");
-			currentClass = currentClass.getSuperclass();
+			//remove matching id records from the child_element table
+			theDb.delete("child_element", whereBuilder.toString(), selectionArgs);
 		}
 		
+		//remove records matching the parentId from the parent_child table
+		String[] parameters = {this.theUUID};
+		theDb.delete("parent_child", "parent_fk=?", parameters);
+		
+		
+		//delete records from each of the tables in the inheritance.
+		try {
+			while(currentClass != ORMStorable.class){
+				String tableName = currentClass.getCanonicalName().replace('.', '_');
+				String[] params = {this.getUUID()};
+				int numDeleted = theDb.delete(tableName, "id=?", params);
+				System.out.println("deleted "+numDeleted+" records.");
+				Field[] fields = this.getClass().getDeclaredFields();
+				for(Field aField : fields){
+					aField.setAccessible(true);
+					if(ORMStorable.class.isAssignableFrom(aField.getClass())){
+						ORMStorable aChild = (ORMStorable)aField.get(this);
+						if(aChild != null){
+							removeIfPossible(theDb, aChild);
+						}
+						aField.set(this, null);
+					}
+					else if(aField.getType().isArray() && ORMStorable.class.isAssignableFrom(aField.getType().getComponentType())){
+						Object[] storables = (Object[]) aField.get(this);
+						//for(Object storable : storables){
+						for(int i = 0; i < storables.length; i++){
+							ORMStorable storable = (ORMStorable)storables[i];
+							if(storable != null){
+								removeIfPossible(theDb, storable);
+								storables[i] = null;
+							}
+						}
+					}
+					else if(Collection.class.isAssignableFrom(aField.getType())){
+
+						Collection<?> valuesCollection = (Collection<?>)aField.get(this);
+						Iterator<?>valuesIt = valuesCollection.iterator();
+						while(valuesIt.hasNext()){
+							Object aValue = valuesIt.next();
+							if(aValue instanceof ORMStorable){
+								removeIfPossible(theDb, (ORMStorable)aValue);
+								valuesIt.remove();
+							}
+						}
+					}
+					else if(Map.class.isAssignableFrom(aField.getType())){
+						Map<?,?> aMap = (Map<?,?>)aField.get(this);
+						Set<?> keysAndValues = aMap.entrySet();
+						Iterator<Entry<?,?>> kvIt = (Iterator<Entry<?,?>>) keysAndValues.iterator();
+						while(kvIt.hasNext()){
+							Entry<?,?> anEntry = kvIt.next();
+							Object aValue = anEntry.getValue();
+							if(aValue instanceof ORMStorable){
+								removeIfPossible(theDb, (ORMStorable)aValue);
+								aMap.remove(anEntry.getKey());
+							}
+						}
+					}
+				}
+				currentClass = currentClass.getSuperclass();
+			}
+		} catch (Exception e) {
+			//roll back the transaction and exit
+			theDb.endTransaction();
+			throw new KVKitORMException(e);
+		}
+		theDb.setTransactionSuccessful();
+		theDb.endTransaction();
+		
+		//end the transaction
 	}
 
-/*
-	private ContentValues addValue(Object value, ContentValues arrayValues) throws KVKitORMException {
-	
-		if(value instanceof Storable){
-			Storable theStorable = (Storable)value;
-			//use the storable's id as a text value
-			arrayValues.put("text_value", theStorable.theUUID);
+
+	private void removeIfPossible(SQLiteDatabase theDb, ORMStorable aChild)
+			throws KVKitORMException {
+		//if there are no other references in the child_element or parent_child tables then remove it
+		String sql = "SELECT child_fk from parent_child where child_fk=? UNION SELECT id FROM child_element where id=?";
+		String[] selectionArgs = {aChild.theUUID, aChild.theUUID};
+		//System.out.println("sql: "+sql);
+		//System.out.println("params: "+Arrays.toString(selectionArgs));
+		Cursor theCursor = theDb.rawQuery(sql, selectionArgs);
+		if(theCursor.getCount() == 0){
+			aChild.remove(theDb);
 		}
-		else if(value instanceof String){
-			arrayValues.put("text_value", ((String)value));
+		else{
+			System.out.println("not removing "+aChild.toString()+" since it has more references.");
 		}
-		else if(value instanceof Double || value instanceof Float
-				|| value instanceof Long || value instanceof Integer
-				|| value instanceof Short || value instanceof Boolean
-				|| value instanceof Byte){
-				String numberString = String.valueOf(value);
-				arrayValues.put("number_value", numberString);
-		}
-		return arrayValues;
 	}
-	*/
+
 	private void collectAttributes(Class<?> aClass, HashMap<String,Object[]> allAttributes) throws KVKitORMException{
 		//System.out.println("collecting attributes for: "+aClass.getCanonicalName());
 		/*
@@ -623,8 +690,7 @@ public class ORMStorable implements Storable{
 		//else if it is map or collection
 		
 		
-		else if(AbstractMap.class.isAssignableFrom(attributeType)
-				|| Map.class.isAssignableFrom(attributeType)){
+		else if(Map.class.isAssignableFrom(attributeType)){
 			
 			
 			
@@ -637,7 +703,7 @@ public class ORMStorable implements Storable{
 				/*
 				 *
 				 * 					Table							Table						Table
-				 * 				Parent_Storable_Table			collection_element			parent_child
+				 * 				Parent_Storable_Table			child_element			parent_child
 				 *				id (TEXT) primary key		id (TEXT) primary key		parent_fk (TEXT) primary key
 				 *											text_value (TEXT)			child_fk  (TEXT) primary key
 				 * 											number_value (NUMBER) 		attribute_name (TEXT)
@@ -647,7 +713,7 @@ public class ORMStorable implements Storable{
 				 */
 				
 				String sql = "SELECT pc.attribute_type, ce.text_value, ce.number_value, pc.map_key FROM "
-						+parentStorableTableName+" p, collection_element ce,"
+						+parentStorableTableName+" p, child_element ce,"
 						+" parent_child pc WHERE pc.parent_fk = ? AND pc.attribute_name = ? AND p.id = pc.parent_fk AND pc.child_fk = ce.id ORDER BY ce.array_order ASC";
 				String[] selectionArgs = {this.theUUID, attributeName};
 				//System.out.println("SQL: "+sql);
@@ -655,10 +721,10 @@ public class ORMStorable implements Storable{
 				Cursor theCursor = theDb.rawQuery(sql, selectionArgs);
 				//System.out.println("number found: "+theCursor.getCount());
 				
-				AbstractMap resultMap = null;
+				Map resultMap = null;
 				while(theCursor.moveToNext()){
 					if(resultMap == null){
-						resultMap = (AbstractMap) anAttribute.getType().newInstance();
+						resultMap = (Map) anAttribute.getType().newInstance();
 					}
 					buildMulitAttributeElement(theDb,
 							anAttribute, attributeName,
@@ -689,7 +755,7 @@ public class ORMStorable implements Storable{
 				/*
 				 *
 				 * 					Table							Table						Table
-				 * 				Parent_Storable_Table			collection_element			parent_child
+				 * 				Parent_Storable_Table			child_element			parent_child
 				 *				id (TEXT) primary key		id (TEXT) primary key		parent_fk (TEXT) primary key
 				 *											text_value (TEXT)			child_fk  (TEXT) primary key
 				 * 											number_value (NUMBER) 		attribute_name (TEXT)
@@ -699,7 +765,7 @@ public class ORMStorable implements Storable{
 				 */
 				
 				String sql = "SELECT pc.attribute_type, ce.text_value, ce.number_value, ce.array_order FROM "
-						+parentStorableTableName+" p, collection_element ce,"
+						+parentStorableTableName+" p, child_element ce,"
 						+" parent_child pc WHERE pc.parent_fk = ? AND pc.attribute_name = ? AND p.id = pc.parent_fk AND pc.child_fk = ce.id ORDER BY ce.array_order ASC";
 				String[] selectionArgs = {this.theUUID, attributeName};
 				//System.out.println("SQL: "+sql);
@@ -754,7 +820,7 @@ public class ORMStorable implements Storable{
 	private void buildMulitAttributeElement(SQLiteDatabase theDb,
 			Field anAttribute, String attributeName,
 			String parentStorableTableName, Cursor theCursor,
-			AbstractCollection<Object> resultCollection, AbstractMap<String, Object> resultMap) throws InstantiationException,
+			AbstractCollection<Object> resultCollection, Map resultMap) throws InstantiationException,
 			IllegalAccessException, ClassNotFoundException, KVKitORMException,
 			NoSuchMethodException, InvocationTargetException {
 		

@@ -36,6 +36,7 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Map;
 import java.util.Queue;
+import java.util.Stack;
 import java.util.WeakHashMap;
 
 
@@ -69,7 +70,6 @@ public class KVKitORM {
 	        *   Initialize the backing database
 	        */
 			theHelper = new KVKitOpenHelper(theApplication, aName,aVersion); 
-			
 			/*
 			 * Get the list of already existent tables.
 			 */
@@ -83,7 +83,7 @@ public class KVKitORM {
 					storableTableExists = true;
 				}
 				else if(!tableName.equals("android_metadata") && !tableName.equals("attribute")
-						&& !tableName.equals("collection_element") && !tableName.equals("parent_child")){
+						&& !tableName.equals("child_element") && !tableName.equals("parent_child")){
 					//System.out.println("tableName: "+tableName);
 					String className = tableName.replace('_', '.');
 					//System.out.println("className: "+className);
@@ -99,7 +99,7 @@ public class KVKitORM {
 				/*
 				 *
 				 * 													Table						Table
-				 * 											collection_element			parent_child
+				 * 											child_element			parent_child
 				 *											id (TEXT) primary key		parent_fk (TEXT) primary key
 				 *											text_value (TEXT)			child_fk  (TEXT) primary key
 				 * 											number_value (NUMBER) 		attribute_name (TEXT)
@@ -117,7 +117,7 @@ public class KVKitORM {
 				 */
 				theDb.execSQL("CREATE TABLE parent_child(parent_fk TEXT NOT NULL, child_fk TEXT NOT NULL, attribute_name TEXT NOT NULL, attribute_type TEXT NOT NULL, map_key TEXT, PRIMARY KEY(parent_fk,child_fk, attribute_name))");
 				
-				theDb.execSQL("CREATE TABLE collection_element(id TEXT NOT NULL PRIMARY KEY, text_value TEXT, number_value NUMBER, array_order NUMBER)");
+				theDb.execSQL("CREATE TABLE child_element(id TEXT NOT NULL PRIMARY KEY, text_value TEXT, number_value NUMBER, array_order NUMBER)");
 			}
 		}
 		else{
@@ -179,7 +179,6 @@ public class KVKitORM {
 		}
 		//start a transaction
 		SQLiteDatabase theDb = theHelper.getWritableDatabase();
-		theDb.setForeignKeyConstraintsEnabled(true);
 		theDb.beginTransaction();
 		Exception failedException = null;
 		try{
@@ -253,39 +252,27 @@ public class KVKitORM {
 		if (Looper.myLooper() != null && Looper.myLooper() == Looper.getMainLooper()) {
 			throw new KVKitOnMainThreadException();
 		}
+		SQLiteDatabase theDb = theHelper.getWritableDatabase();
 		//System.out.println("remove KVKit storable");
 		if(!isTemplate){
 			//System.out.println("removing defined storable");
-			remove(aStorable, null);
+			aStorable.remove(theDb);
 		}
 		else{
+			//System.out.println("using template");
 			//query the objects to remove
 			ArrayList<ORMStorable> found = this.get(aStorable, null);
-			//String[]idsToRemove = new String[found.size()];
-			HashMap<String, Boolean>idMap = new HashMap<String,Boolean>();
-			for(int i = 0; i < found.size();i++){
-				ORMStorable aStorableToRemove = found.get(i);
-				if(!idMap.containsKey(aStorableToRemove.getUUID())){
-					idMap.put(aStorableToRemove.getUUID(), true);
-				}
-			}
-			//remove them one at a time using or in the where clause.
-			//System.out.println("using template");
-			SQLiteDatabase theDb = theHelper.getWritableDatabase();
 			KVKitORMException failedException = null;
 			//System.out.println("about to start transaction");
 			theDb.beginTransaction();
 			try{
-				String[] ids = new String[idMap.keySet().size()];
-				String[] idsToRemove = idMap.keySet().toArray(ids);
-				aStorable.removeByIds(theDb, idsToRemove);
+				for(ORMStorable storableToRemove : found){
+					storableToRemove.remove(theDb);
+				}
 				theDb.setTransactionSuccessful();
-				removeExistingStorable(aStorable);
-				//System.out.println("individual remove succeeded");
 			}
-			catch(Exception e){
-				//System.out.println("individual remove failed");
-				failedException = new KVKitORMException(e);
+			catch(KVKitORMException e){
+				failedException = e;
 			}
 			theDb.endTransaction();//does a commit or rollback
 			//System.out.println("transaction complete");
@@ -295,51 +282,50 @@ public class KVKitORM {
 		}
 	}
 	
-	public void remove(ORMStorable anExample, Field[] fieldsToIgnore) throws KVKitORMException{
+	
+	//remove any 
+	public void remove(Class<?> aType, String keyPath, String comparison) throws BadKeyPathException, KVKitORMException{
 		if (Looper.myLooper() != null && Looper.myLooper() == Looper.getMainLooper()) {
 			throw new KVKitOnMainThreadException();
 		}
-		ArrayList<Field>ignoreFields = null;
-		if(fieldsToIgnore != null){
-			ignoreFields = new ArrayList<Field>(Arrays.asList(fieldsToIgnore));
-		}
-		if(ignoreFields == null){
-			ignoreFields = new ArrayList<Field>();
-		}
-		try {
-			Field hiddenStorableField = ORMStorable.class.getDeclaredField("tablesExist");
-			ignoreFields.add(hiddenStorableField);
-			
-			hiddenStorableField = ORMStorable.class.getDeclaredField("theUUID");
-			ignoreFields.add(hiddenStorableField);
-		} catch (NoSuchFieldException e) {
-			throw new KVKitORMException(e);
-		}
-
-				
+		validateComparitor(comparison);
+		ArrayList<ORMStorable> foundStorables = this.get(aType, keyPath, comparison);
 		SQLiteDatabase theDb = theHelper.getWritableDatabase();
-		KVKitORMException failedException = null;
 		theDb.beginTransaction();
+		Exception issue = null;
 		try{
-			anExample.remove(theDb);
+			for(ORMStorable found : foundStorables){
+				found.remove(theDb);
+			}
 			theDb.setTransactionSuccessful();
 		}
 		catch(Exception e){
-			failedException = new KVKitORMException(e);
+			issue  = e;
 		}
-		theDb.endTransaction();//does a commit or rollback
-		if(failedException != null){
-			throw failedException;
-		}
-
-	}
-	
-	//remove any 
-	public void remove(Class<ORMStorable> storableType, String keypath, Object value){
-		if (Looper.myLooper() != null && Looper.myLooper() == Looper.getMainLooper()) {
-			throw new KVKitOnMainThreadException();
+		theDb.endTransaction();
+		if(issue != null){
+			throw new KVKitORMException(issue);
 		}
 		
+		
+	}
+	private void validateComparitor(String aComparitor) throws BadKeyPathException {
+		if(aComparitor != null){
+			aComparitor = aComparitor.trim();
+			if(aComparitor.length() == 0){
+				aComparitor = null;
+			}
+			else{
+				String upperedComparison = aComparitor.toUpperCase();
+				char firstChar = upperedComparison.charAt(0);
+				switch(firstChar){
+					case '=': case '<': case '>': case '!': case 'L': case 'B': case 'I':
+						break;
+					default:
+						throw new BadKeyPathException("ERROR: The comparision string "+aComparitor+" does not begin with a valid comparitor.");
+				}
+			}
+		}
 	}
 	
 	//loads an attribute of the passed storable from the db
@@ -361,31 +347,167 @@ public class KVKitORM {
 		}
 	}
 	//get all objects of type storableType that have a keyPath with the value.
-	public ArrayList<ORMStorable> get(Class<ORMStorable> storableType, String keyPath, String value){
+	public ArrayList<ORMStorable> get(Class<?> aType, String keyPath, String comparitor) throws BadKeyPathException, KVKitORMException{
 		if (Looper.myLooper() != null && Looper.myLooper() == Looper.getMainLooper()) {
 			throw new KVKitOnMainThreadException();
 		}
-		return null;
+		if( !ORMStorable.class.isAssignableFrom(aType)){
+			throw new KVKitORMException("ERROR: Invalid class type. Class "+ aType.getCanonicalName()+" does not inherit from ORMStorable.");
+		}
+		validateComparitor(comparitor);
+		Stack<String>elementStack = null;
+		if(keyPath != null){
+			keyPath = keyPath.trim();
+			String[] pathElements = keyPath.split(".");
+			elementStack = new Stack<String>();
+			for(String element : pathElements){
+				elementStack.push(element);
+			}
+		}
+		
+		
+		StringBuilder aliasBuilder = new StringBuilder();
+		StringBuilder whereBuilder = new StringBuilder();
+
+		int numForAlias = 1;
+		int currentChar = 97;
+		
+		String tableName = aType.getCanonicalName().replace('.', '_');
+		aliasBuilder.append(tableName);
+
+		String sql = buildSQLForPath("SELECT * FROM ", aType, elementStack, whereBuilder, comparitor, aliasBuilder,
+				numForAlias, currentChar);
+		
+		System.out.println("QUERY: "+sql);
+		
+		SQLiteDatabase theDb = this.theHelper.getReadableDatabase();
+		Cursor aCursor = theDb.rawQuery(sql, null);
+		ArrayList<ORMStorable> results = new ArrayList<ORMStorable>();
+		String[] fieldNames = aCursor.getColumnNames();
+		while(aCursor.moveToNext()){
+			try {
+				ORMStorable aStorable = (ORMStorable)aType.newInstance();
+				for(String fieldName : fieldNames){
+					Field aField = aType.getDeclaredField(fieldName);
+					aField.setAccessible(true);
+					/*
+					 * if the field type is numeric get a number type
+					 */
+					/*
+					 * if the field is string type get a string
+					 */
+					//aField.set(aStorable, aValue);
+				}
+				results.add(aStorable);
+			} catch (Exception e) {
+				throw new KVKitORMException(e);
+			}
+		}
+		
+		
+		return results;
 	}
 	
-	public ArrayList<ORMStorable> get(ORMStorable anExample, String orderByAttributeName) throws KVKitORMException{
-		return get(anExample, null, orderByAttributeName);
+	private String buildSQLForPath(String sqlBeginClause, Class<?> aType,
+			Stack<String> elementStack, StringBuilder whereBuilder, String comparitor, StringBuilder aliasBuilder,
+			int numForAlias, int currentChar) throws BadKeyPathException {
+		
+		/*
+		 * Person							Address
+		 * 	ArrayList<Address>addresses		String[] streets
+		 * 
+		 * Tables
+		 * Person		Address			parent_child		child_element
+		 * 
+		 *
+		 *
+		 * 		Table		Table							Table						Table
+		 * 	  Person		Address						child_element				parent_child
+		 *		id (TEXT)	id(TEXT)				id (TEXT) primary key		parent_fk (TEXT) primary key
+		 *											text_value (TEXT)			child_fk  (TEXT) primary key
+		 * 											number_value (NUMBER) 		attribute_name (TEXT)
+		 * 											array_order (NUMBER)		attribute_type (TEXT)	
+		 * 																		map_key (TEXT)
+		 * comparitor = "LIKE %Pine%"
+		 * 
+		 * Bad query here!!!!!
+		 * 
+		 * SELECT p.* FROM Person p, Address a, parent_child pc, child_element ce 
+		 * 		WHERE ce.text_value LIKE '%Pine%' AND ce.id = pc.child_fk AND pc.parent_fk = a.id AND a.id = pc.child_fk AND pc.parent_fk = p.id;
+		 * 
+		 * SELECT p.* FROM Person p 
+	INNER JOIN parent_child pc1 ON pc1.parent_fk = p.id
+	INNER JOIN Address a ON pc1.child_fk = a.id
+	INNER JOIN parent_child pc ON a.id = pc.parent_fk
+	INNER JOIN child_element ce ON ce.id = pc.child_fk 
+	WHERE ce.text_value LIKE '%Pine%';
+		 * 	
+		 * 
+		 * 
+		 */
+
+		String attributeName = null;
+		if(elementStack == null){
+			elementStack = new Stack<String>();
+		}
+		else{
+			attributeName = elementStack.pop();
+		}
+		String alias = (""+(char)currentChar) +numForAlias;
+		aliasBuilder.append(" ");
+		aliasBuilder.append(alias);
+		Class<?>currentClass = aType;
+		if(elementStack.size() > 0){
+			Field pathField = null;
+			try {
+				pathField = currentClass.getDeclaredField(attributeName);
+			} catch (NoSuchFieldException e) {
+				throw new BadKeyPathException("ERROR: the field named "+attributeName+" doesn't exist in the class "+currentClass.getCanonicalName());
+			}
+			Class<?> attributeClass = pathField.getType();
+			if(attributeClass.isArray() || Collection.class.isAssignableFrom(attributeClass)
+					|| Map.class.isAssignableFrom(attributeClass)
+					|| ORMStorable.class.isAssignableFrom(attributeClass)){
+				
+				/*
+				 * add to alias and where builders
+				 */
+				//recursive call goes here
+				//return buildQueryForPath(.....);
+			}
+			else if(elementStack.size() > 0){
+					throw new BadKeyPathException("ERROR: bad key path. Element "+elementStack.pop()+" is not reachable.");
+			}
+		}
+
+		StringBuilder queryBuilder = new StringBuilder();
+		queryBuilder.append(sqlBeginClause);
+		queryBuilder.append(aliasBuilder);
+		if(attributeName != null){
+		queryBuilder.append(" WHERE ");
+			if(whereBuilder.length() > 0){
+				queryBuilder.append(whereBuilder);
+				queryBuilder.append(" AND ");
+			}
+			queryBuilder.append(alias);
+			queryBuilder.append(".");
+			queryBuilder.append(attributeName);
+			queryBuilder.append(comparitor);
+		}
+		return queryBuilder.toString();
 	}
 	
-	public ArrayList<ORMStorable> get(ORMStorable anExample, Field[] fieldsToIgnore, String orderByAttributeName) throws KVKitORMException{
+	
+	
+	public ArrayList<ORMStorable> get(ORMStorable aTemplate, String orderByAttributeName) throws KVKitORMException{
 		if (Looper.myLooper() != null && Looper.myLooper() == Looper.getMainLooper()) {
 			throw new KVKitOnMainThreadException();
 		}
 		HashMap<String,Field>instanceFields = new HashMap<String,Field>();
 		SQLiteDatabase theDb = theHelper.getReadableDatabase();
 		
-		ArrayList<Field>ignoreFields = null;
-		if(fieldsToIgnore != null){
-			ignoreFields = new ArrayList<Field>(Arrays.asList(fieldsToIgnore));
-		}
-		if(ignoreFields == null){
-			ignoreFields = new ArrayList<Field>();
-		}
+		
+		ArrayList<Field> ignoreFields = new ArrayList<Field>();
 		try {
 			Field hiddenStorableField = ORMStorable.class.getDeclaredField("tablesExist");
 			ignoreFields.add(hiddenStorableField);
@@ -413,11 +535,11 @@ public class KVKitORM {
 		selectBuilder.append("SELECT ");
 		int inheritanceLevel = 0;
 		//System.out.println("starting query build");
-		for(Class<?> currentClass = anExample.getClass(); currentClass != Object.class; currentClass = currentClass.getSuperclass(), currentChar++, numForAlias++, inheritanceLevel++){
+		for(Class<?> currentClass = aTemplate.getClass(); currentClass != Object.class; currentClass = currentClass.getSuperclass(), currentChar++, numForAlias++, inheritanceLevel++){
 			if(currentChar > 122){
 				currentChar = 97;
 			}
-			if(anExample.getClass() == ORMStorable.class){
+			if(currentClass == ORMStorable.class){
 				//System.out.println("done");
 				continue;
 			}
@@ -468,7 +590,7 @@ public class KVKitORM {
 						fieldBuilder.append(fieldName);
 						instanceFields.put(fieldName, aField);
 						
-						Object aValue = aField.get(anExample);
+						Object aValue = aField.get(aTemplate);
 						//System.out.println("value type: "+aField.getType());
 						if(aValue != null && alias != null){
 							
@@ -590,7 +712,7 @@ public class KVKitORM {
 			//System.out.println("creating a storable.");
 			try {
 				//ArrayList<Field> neededChildren = new ArrayList<Field>();
-				ORMStorable aStorable = (ORMStorable)anExample.getClass().newInstance();
+				ORMStorable aStorable = (ORMStorable)aTemplate.getClass().newInstance();
 				for(int i = 0; i < columnNames.length; i++){
 					//System.out.println("working column: "+columnNames[i]);
 					String columnName = columnNames[i];
@@ -751,49 +873,6 @@ public class KVKitORM {
 		}
 		return result;
 	}
-	
-	public ArrayList<Object> getUsingKeyPath(String aKeyPath, String aBooleanLogicComparison, Object compareValue){
-		if (Looper.myLooper() != null && Looper.myLooper() == Looper.getMainLooper()) {
-			throw new KVKitOnMainThreadException();
-		}
-		ArrayList<Object> foundObjects = new ArrayList<Object>();
-		/*
-		 * 
-		 * split the keyPath on '.'
-		 * 
-		 * Ex. "Stuff.theOthers.otherAges"
-		 * Ex. "Stuff.moreOthers.blah_blah"
-		 * 
-		 * When using the keypath to move down the objects, when an array, ArrayList, or Map is encountered 
-		 * use a thread pool & branch the search.  Use this formula to calculate how many threads to pull from
-		 * the pool.
-		 * 
-		 * #items in the collection * (total number of key path items - current item number)/total number of key path items
-		 * 
-		 * Always join the locally created threads before continuing.
-		 * 
-		 * aBooleanLogicComparison uses SQL boolean logic syntax.  It will be used in the where clause of the generated SQL.
-		 * 
-		 * 
-		 */
-		String[] pathElements = aKeyPath.split(".");
-		int currentPathCount = 0;
-		find(foundObjects, pathElements, pathElements.length,currentPathCount, aBooleanLogicComparison);
-		return foundObjects;
-	}
-	
-	private void find(ArrayList<Object> foundObjects, String[] pathElements
-						, int length, int currentPathCount
-						, String aBooleanLogicComparison){
-		
-		
-		
-		if(currentPathCount < length){
-			find(foundObjects, pathElements, length, currentPathCount++, aBooleanLogicComparison);
-		}
-		return;
-	}
-	
 	
 	public void close(){
 		theHelper.close();
