@@ -2,6 +2,7 @@ package org.quickconnectfamily.kvkit.kv;
 
 import java.io.FileInputStream;
 import java.io.Serializable;
+import java.lang.ref.WeakReference;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -30,7 +31,7 @@ public class KVStore {
 	private static int inMemoryStorageCount;
 	private static KVStoreEventListener theListener;
 	private static Executor runnableExecutor;
-	private static Activity theActivity;
+	private static WeakReference<Activity> theActivityRef;
 	static{
 		valuesByKey = new ConcurrentHashMap<String, Serializable>();
 		valuesByTimeStamp = new ConcurrentLinkedQueue<Serializable>();
@@ -59,11 +60,11 @@ public class KVStore {
 	}
 	
 	public static void setActivity(Activity anActivity){
-		theActivity = anActivity;
+		theActivityRef = new WeakReference<Activity>(anActivity);
 	}
 	
 	public static Activity getActivity(){
-		return theActivity;
+		return theActivityRef.get();
 	}
 	
 	public static void setStoreEventListener(KVStoreEventListener aListener){
@@ -98,7 +99,7 @@ public class KVStore {
 			aCipher = theEncryptCipher;
 		}
 		//start the storage on a separate thread from the pool.
-		runnableExecutor.execute(new PersistanceRunnable(key, value, aCipher, inMemoryStorageCount, valuesByTimeStamp, valuesByKey, inMemoryStorageCount, theListener, theActivity));
+		runnableExecutor.execute(new PersistanceRunnable(key, value, aCipher, inMemoryStorageCount, valuesByTimeStamp, valuesByKey, inMemoryStorageCount, theListener, theActivityRef));
 	}
 	
 	public static Serializable getValue(String key){
@@ -166,6 +167,10 @@ public class KVStore {
 			return null;
 		}
 		try {
+			Activity theActivity = theActivityRef.get();
+			if(theActivity == null){
+				return null;
+			}
 			FileInputStream persistanceFileInputStream = theActivity.openFileInput(encryptedKey);
 			long size = persistanceFileInputStream.getChannel().size();
 			if(size == 0){
@@ -210,7 +215,7 @@ public class KVStore {
 					}
 				}
 			}
-			runnableExecutor.execute(new PersistanceDeletionRunnable(theActivity, key, keyToUse, fileSemaphores, valuesByTimeStamp, valuesByKey, theListener));
+			runnableExecutor.execute(new PersistanceDeletionRunnable(theActivityRef, key, keyToUse, fileSemaphores, valuesByTimeStamp, valuesByKey, theListener));
 		}
 	}
 	
@@ -237,7 +242,10 @@ public class KVStore {
 			if(aCipher == null){
 				aCipher = theDecryptCipher;
 			}
-			
+			Activity theActivity = theActivityRef.get();
+			if(theActivity == null){
+				return null;
+			}
 			String[] fileNames = theActivity.fileList();
 			for(String aFileName : fileNames){
 				searchThreadPool.execute(new LoadAndSearchRunnable(aFileName, aCipher, keysInPath, matchValue, valueIterator.next(), retValue, searchThreadPool,theListener));

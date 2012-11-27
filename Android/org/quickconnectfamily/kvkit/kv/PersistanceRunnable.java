@@ -4,6 +4,7 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.Serializable;
+import java.lang.ref.WeakReference;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -26,7 +27,7 @@ public class PersistanceRunnable implements Runnable {
 	private ConcurrentLinkedQueue<Serializable> valuesByTimeStamp;
 	private ConcurrentHashMap<String,Serializable> valuesByKey;
 	private KVStoreEventListener listener;
-	private Activity activity;
+	private WeakReference<Activity> activityRef;
 	
 	
 
@@ -36,7 +37,7 @@ public class PersistanceRunnable implements Runnable {
 			ConcurrentHashMap<String, Serializable> valuesByKey,
 			int allowedInMemoryElementCount,
 			KVStoreEventListener listener,
-			Activity activity) {
+			WeakReference<Activity> theActivityRef) {
 		super();
 		this.key = key;
 		this.value = value;
@@ -45,7 +46,7 @@ public class PersistanceRunnable implements Runnable {
 		this.valuesByTimeStamp = valuesByTimeStamp;
 		this.valuesByKey = valuesByKey;
 		this.listener = listener;
-		this.activity = activity;
+		this.activityRef = theActivityRef;
 	}
 
 
@@ -131,6 +132,10 @@ public class PersistanceRunnable implements Runnable {
 			return;
 		}
 		try {
+			Activity activity = activityRef.get();
+			if(activity == null){
+				return;
+			}
 			FileOutputStream persistanceFileOutputStream = activity.openFileOutput(keyToUse, Context.MODE_PRIVATE);
 			persistanceFileOutputStream.write(jsonStorageString.getBytes());
 			persistanceFileOutputStream.close();

@@ -1,6 +1,7 @@
 package org.quickconnectfamily.kvkit.kv;
 
 import java.io.Serializable;
+import java.lang.ref.WeakReference;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Semaphore;
@@ -9,7 +10,7 @@ import android.app.Activity;
 
 public class PersistanceDeletionRunnable implements Runnable {
 
-	Activity theActivity;
+	WeakReference<Activity> theActivityRef;
 	String key;
 	String fileName;
 	ConcurrentHashMap<String,Semaphore>fileSemaphores;
@@ -18,12 +19,12 @@ public class PersistanceDeletionRunnable implements Runnable {
 	private KVStoreEventListener listener;
 	
 	
-	public PersistanceDeletionRunnable(Activity theActivity, String key,
+	public PersistanceDeletionRunnable(WeakReference<Activity> theActivityRef, String key,
 			String fileName, ConcurrentHashMap<String, Semaphore> fileSemaphores,
 			ConcurrentLinkedQueue<Serializable> valuesByTimeStamp,
 			ConcurrentHashMap<String, Serializable> valuesByKey, KVStoreEventListener theListener) {
 		super();
-		this.theActivity = theActivity;
+		this.theActivityRef = theActivityRef;
 		this.key = key;
 		this.fileName = fileName;
 		this.fileSemaphores = fileSemaphores;
@@ -48,6 +49,10 @@ public class PersistanceDeletionRunnable implements Runnable {
 				if(foundEntity != null){
 					valuesByKey.remove(key);
 					valuesByTimeStamp.remove(foundEntity);
+				}
+				Activity theActivity = theActivityRef.get();
+				if(theActivity == null){
+					return;
 				}
 				theActivity.deleteFile(fileName);
 				fileSemaphores.remove(fileSemaphore);
