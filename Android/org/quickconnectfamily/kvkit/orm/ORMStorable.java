@@ -440,7 +440,6 @@ public class ORMStorable implements Storable{
 				String tableName = currentClass.getCanonicalName().replace('.', '_');
 				String[] params = {this.getUUID()};
 				int numDeleted = theDb.delete(tableName, "id=?", params);
-				System.out.println("deleted "+numDeleted+" records.");
 				Field[] fields = this.getClass().getDeclaredFields();
 				for(Field aField : fields){
 					aField.setAccessible(true);
@@ -513,9 +512,9 @@ public class ORMStorable implements Storable{
 		if(theCursor.getCount() == 0){
 			aChild.remove(theDb);
 		}
-		else{
-			System.out.println("not removing "+aChild.toString()+" since it has more references.");
-		}
+		//else{
+			//System.out.println("not removing "+aChild.toString()+" since it has more references.");
+		//}
 	}
 
 	private void collectAttributes(Class<?> aClass, HashMap<String,Object[]> allAttributes) throws KVKitORMException{

@@ -6,25 +6,26 @@
  rights to use, copy, modify, merge, publish, distribute, sublicense, 
  and/or sell copies of the Software, and to permit persons to whom the Software 
  is furnished to do so, subject to the following conditions:
- 
+
  The above copyright notice and this permission notice shall be 
  included in all copies or substantial portions of the Software.
- 
- 
+
+
  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, 
  INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A 
  PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT 
  HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF 
  CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE 
  OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- 
- 
+
+
  */
 package org.quickconnectfamily.kvkit.orm;
 
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.lang.reflect.ParameterizedType;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.sql.Timestamp;
@@ -33,6 +34,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.Map;
 import java.util.Queue;
@@ -49,15 +51,15 @@ public class KVKitORM {
 	private WeakHashMap<Thread,Queue<ORMStorable>> storableQueues = null;
 	private HashMap<String,WeakReference<ORMStorable>>loadedStorables = null;
 	private KVKitOpenHelper theHelper = null;
-	
+
 	static KVKitORM theKVKit = null;
-	
+
 	static{
 		theKVKit = new KVKitORM();
 		theKVKit.loadedStorables = new HashMap<String, WeakReference<ORMStorable>>();
 		theKVKit.storableQueues = new WeakHashMap<Thread,Queue<ORMStorable>>();
 	}
-	
+
 	public static KVKitORM getInstance(){
 		return theKVKit;
 	}
@@ -66,9 +68,9 @@ public class KVKitORM {
 	 */
 	public void initialize(Application theApplication, String aName, int aVersion) throws InitializationException{
 		if(theHelper == null){
-	        /*
-	        *   Initialize the backing database
-	        */
+			/*
+			 *   Initialize the backing database
+			 */
 			theHelper = new KVKitOpenHelper(theApplication, aName,aVersion); 
 			/*
 			 * Get the list of already existent tables.
@@ -107,7 +109,7 @@ public class KVKitORM {
 				 * 																		map_key (TEXT)
 				 * 											
 				 */
-				
+
 				/*
 				 * 														Table							
 				 * 													Storable_Table	(created with the name of the Storable class)		
@@ -116,7 +118,7 @@ public class KVKitORM {
 				 * 																			
 				 */
 				theDb.execSQL("CREATE TABLE parent_child(parent_fk TEXT NOT NULL, child_fk TEXT NOT NULL, attribute_name TEXT NOT NULL, attribute_type TEXT NOT NULL, map_key TEXT, PRIMARY KEY(parent_fk,child_fk, attribute_name))");
-				
+
 				theDb.execSQL("CREATE TABLE child_element(id TEXT NOT NULL PRIMARY KEY, text_value TEXT, number_value NUMBER, array_order NUMBER)");
 			}
 		}
@@ -124,7 +126,7 @@ public class KVKitORM {
 			throw new InitializationException("KVKit Already Initialized");
 		}
 	}
-	
+
 	private ORMStorable findExistingStorable(String aUUID){
 		ORMStorable foundStorable = null;
 		WeakReference<ORMStorable> aReference = this.loadedStorables.get(aUUID);
@@ -133,7 +135,7 @@ public class KVKitORM {
 			foundStorable = aReference.get();
 		}
 		//else{
-			//System.out.println("didn't find storable");
+		//System.out.println("didn't find storable");
 		//}
 		return foundStorable;
 	}
@@ -150,7 +152,7 @@ public class KVKitORM {
 			removed.clear();
 		}
 	}
-	
+
 	public void beginMultiStore(){
 		Thread curThread = Thread.currentThread();
 		Queue<ORMStorable> aQueue = this.storableQueues.get(curThread);
@@ -159,7 +161,7 @@ public class KVKitORM {
 			this.storableQueues.put(curThread, aQueue);
 		}
 	}
-	
+
 	public void addToMultiStore(ORMStorable aStorable) {
 		Queue<ORMStorable> aQueue = this.storableQueues.get(Thread.currentThread());
 		if(aQueue == null){
@@ -167,7 +169,7 @@ public class KVKitORM {
 		}
 		aQueue.add(aStorable);
 	}
-	
+
 	public void commitMultiStore() throws KVKitORMException, KVKitClassConfigurationException {
 		if (Looper.myLooper() != null && Looper.myLooper() == Looper.getMainLooper()) {
 			throw new KVKitOnMainThreadException();
@@ -206,11 +208,11 @@ public class KVKitORM {
 			}
 		}
 	}
-	
+
 	public void cleanupMultiStore(Thread aThread){
 		this.storableQueues.remove(aThread);
 	}
-	
+
 	public void store(ORMStorable aStorable) throws KVKitORMException, KVKitClassConfigurationException{
 		if (Looper.myLooper() != null && Looper.myLooper() == Looper.getMainLooper()) {
 			throw new KVKitOnMainThreadException();
@@ -243,11 +245,11 @@ public class KVKitORM {
 			}
 		}
 	}
-	
+
 	public void remove(ORMStorable aStorable) throws KVKitORMException{
 		remove(aStorable, false);
 	}
-	
+
 	public void remove(ORMStorable aStorable, boolean isTemplate) throws KVKitORMException{
 		if (Looper.myLooper() != null && Looper.myLooper() == Looper.getMainLooper()) {
 			throw new KVKitOnMainThreadException();
@@ -281,13 +283,14 @@ public class KVKitORM {
 			}
 		}
 	}
-	
-	
-	//remove any 
-	public void remove(Class<?> aType, String keyPath, String comparison) throws BadKeyPathException, KVKitORMException{
+
+
+	//remove any found
+	public int remove(Class<?> aType, String keyPath, String comparison) throws BadKeyPathException, KVKitORMException{
 		if (Looper.myLooper() != null && Looper.myLooper() == Looper.getMainLooper()) {
 			throw new KVKitOnMainThreadException();
 		}
+		int numRemoved = 0;
 		validateComparitor(comparison);
 		ArrayList<ORMStorable> foundStorables = this.get(aType, keyPath, comparison);
 		SQLiteDatabase theDb = theHelper.getWritableDatabase();
@@ -306,8 +309,8 @@ public class KVKitORM {
 		if(issue != null){
 			throw new KVKitORMException(issue);
 		}
-		
-		
+		numRemoved = foundStorables.size();
+		return numRemoved;
 	}
 	private void validateComparitor(String aComparitor) throws BadKeyPathException {
 		if(aComparitor != null){
@@ -319,18 +322,18 @@ public class KVKitORM {
 				String upperedComparison = aComparitor.toUpperCase();
 				char firstChar = upperedComparison.charAt(0);
 				switch(firstChar){
-					case '=': case '<': case '>': case '!': case 'L': case 'B': case 'I':
-						break;
-					default:
-						throw new BadKeyPathException("ERROR: The comparision string "+aComparitor+" does not begin with a valid comparitor.");
+				case '=': case '<': case '>': case '!': case 'L': case 'B': case 'I':
+					break;
+				default:
+					throw new BadKeyPathException("ERROR: The comparision string "+aComparitor+" does not begin with a valid comparitor.");
 				}
 			}
 		}
 	}
-	
+
 	//loads an attribute of the passed storable from the db
 	protected void load(ORMStorable aStorable, Field anAttribute) throws KVKitORMException{
-		
+
 		SQLiteDatabase theDb = theHelper.getWritableDatabase();
 		KVKitORMException failedException = null;
 		theDb.beginTransaction();
@@ -354,64 +357,18 @@ public class KVKitORM {
 		if( !ORMStorable.class.isAssignableFrom(aType)){
 			throw new KVKitORMException("ERROR: Invalid class type. Class "+ aType.getCanonicalName()+" does not inherit from ORMStorable.");
 		}
+		if(keyPath == null || keyPath.trim().length() == 0 || comparitor == null || comparitor.trim().length() == 0){
+			throw new BadKeyPathException("ERROR: Both the keypath and the comparitor must not be null and not be empty strings.");
+		}
 		validateComparitor(comparitor);
-		Stack<String>elementStack = null;
-		if(keyPath != null){
-			keyPath = keyPath.trim();
-			String[] pathElements = keyPath.split(".");
-			elementStack = new Stack<String>();
-			for(String element : pathElements){
-				elementStack.push(element);
-			}
-		}
-		
-		
-		StringBuilder aliasBuilder = new StringBuilder();
-		StringBuilder whereBuilder = new StringBuilder();
+		LinkedList<String>attributeNameQueue = new LinkedList<String>();
+		keyPath = keyPath.trim();
+		String[] pathElements = keyPath.split("\\.");
 
-		int numForAlias = 1;
-		int currentChar = 97;
-		
-		String tableName = aType.getCanonicalName().replace('.', '_');
-		aliasBuilder.append(tableName);
-
-		String sql = buildSQLForPath("SELECT * FROM ", aType, elementStack, whereBuilder, comparitor, aliasBuilder,
-				numForAlias, currentChar);
-		
-		System.out.println("QUERY: "+sql);
-		
-		SQLiteDatabase theDb = this.theHelper.getReadableDatabase();
-		Cursor aCursor = theDb.rawQuery(sql, null);
-		ArrayList<ORMStorable> results = new ArrayList<ORMStorable>();
-		String[] fieldNames = aCursor.getColumnNames();
-		while(aCursor.moveToNext()){
-			try {
-				ORMStorable aStorable = (ORMStorable)aType.newInstance();
-				for(String fieldName : fieldNames){
-					Field aField = aType.getDeclaredField(fieldName);
-					aField.setAccessible(true);
-					/*
-					 * if the field type is numeric get a number type
-					 */
-					/*
-					 * if the field is string type get a string
-					 */
-					//aField.set(aStorable, aValue);
-				}
-				results.add(aStorable);
-			} catch (Exception e) {
-				throw new KVKitORMException(e);
-			}
+		for(String element : pathElements){
+			attributeNameQueue.add(element);
 		}
-		
-		
-		return results;
-	}
-	
-	private String buildSQLForPath(String sqlBeginClause, Class<?> aType,
-			Stack<String> elementStack, StringBuilder whereBuilder, String comparitor, StringBuilder aliasBuilder,
-			int numForAlias, int currentChar) throws BadKeyPathException {
-		
+
 		/*
 		 * Person							Address
 		 * 	ArrayList<Address>addresses		String[] streets
@@ -428,85 +385,122 @@ public class KVKitORM {
 		 * 											number_value (NUMBER) 		attribute_name (TEXT)
 		 * 											array_order (NUMBER)		attribute_type (TEXT)	
 		 * 																		map_key (TEXT)
-		 * comparitor = "LIKE %Pine%"
-		 * 
-		 * Bad query here!!!!!
-		 * 
-		 * SELECT p.* FROM Person p, Address a, parent_child pc, child_element ce 
-		 * 		WHERE ce.text_value LIKE '%Pine%' AND ce.id = pc.child_fk AND pc.parent_fk = a.id AND a.id = pc.child_fk AND pc.parent_fk = p.id;
-		 * 
-		 * SELECT p.* FROM Person p 
-	INNER JOIN parent_child pc1 ON pc1.parent_fk = p.id
-	INNER JOIN Address a ON pc1.child_fk = a.id
-	INNER JOIN parent_child pc ON a.id = pc.parent_fk
-	INNER JOIN child_element ce ON ce.id = pc.child_fk 
-	WHERE ce.text_value LIKE '%Pine%';
-		 * 	
 		 * 
 		 * 
 		 */
 
-		String attributeName = null;
-		if(elementStack == null){
-			elementStack = new Stack<String>();
-		}
-		else{
-			attributeName = elementStack.pop();
-		}
+		StringBuilder sqlBuilder = new StringBuilder();
+
+		int numForAlias = 1;
+		int currentChar = 97;
 		String alias = (""+(char)currentChar) +numForAlias;
-		aliasBuilder.append(" ");
-		aliasBuilder.append(alias);
+		sqlBuilder.append("SELECT ");
+		sqlBuilder.append(alias);
+		sqlBuilder.append(".* FROM ");
+		String tableName = aType.getCanonicalName().replace('.', '_');
+		sqlBuilder.append(tableName);
+		sqlBuilder.append(" ");
+		sqlBuilder.append(alias);
+
 		Class<?>currentClass = aType;
-		if(elementStack.size() > 0){
+		while(!attributeNameQueue.isEmpty()){
+			String attributeName = attributeNameQueue.remove();
+			Class<?> attributeClass = null;
 			Field pathField = null;
 			try {
 				pathField = currentClass.getDeclaredField(attributeName);
 			} catch (NoSuchFieldException e) {
 				throw new BadKeyPathException("ERROR: the field named "+attributeName+" doesn't exist in the class "+currentClass.getCanonicalName());
 			}
-			Class<?> attributeClass = pathField.getType();
-			if(attributeClass.isArray() || Collection.class.isAssignableFrom(attributeClass)
-					|| Map.class.isAssignableFrom(attributeClass)
-					|| ORMStorable.class.isAssignableFrom(attributeClass)){
-				
+			attributeClass = pathField.getType();
+			if(attributeClass.isArray()){
+				attributeClass = attributeClass.getComponentType();
+			}
+			else if(Collection.class.isAssignableFrom(attributeClass)){
+				ParameterizedType collectionType = (ParameterizedType) pathField.getGenericType();
+				attributeClass = (Class<?>) collectionType.getActualTypeArguments()[0];
+			}
+			else if(Map.class.isAssignableFrom(attributeClass)){
+				ParameterizedType mapType = (ParameterizedType) pathField.getGenericType();
+				attributeClass = (Class<?>) mapType.getActualTypeArguments()[1];
+			}
+			if(ORMStorable.class.isAssignableFrom(attributeClass)){
 				/*
-				 * add to alias and where builders
+				 * add to builder 
 				 */
-				//recursive call goes here
-				//return buildQueryForPath(.....);
+				//INNER JOIN Address a ON pc1.child_fk = a.id
+				int oldAliasNum = numForAlias;
+				numForAlias++;
+				String oldAlias = alias;
+				alias = (""+(char)currentChar++) + (numForAlias);
+				sqlBuilder.append(" INNER JOIN ");
+				sqlBuilder.append(attributeClass.getCanonicalName().replace('.', '_'));
+				sqlBuilder.append(" ");
+				sqlBuilder.append(alias);
+				sqlBuilder.append(" ON pc");
+				sqlBuilder.append(oldAliasNum);
+				sqlBuilder.append(".child_fk = ");
+				sqlBuilder.append(alias);
+				sqlBuilder.append(".id");
+
+				//INNER JOIN parent_child pc ON a.id = pc.parent_fk
+				sqlBuilder.append(" INNER JOIN parent_child pc");
+				sqlBuilder.append(oldAliasNum);
+				sqlBuilder.append(" ON ");
+				sqlBuilder.append(oldAlias);
+				sqlBuilder.append(".id = pc");
+				sqlBuilder.append(oldAliasNum);
+				sqlBuilder.append(".parent_fk");
+
 			}
-			else if(elementStack.size() > 0){
-					throw new BadKeyPathException("ERROR: bad key path. Element "+elementStack.pop()+" is not reachable.");
+			else if(!attributeClass.isArray()){
+				//if !Storable || not Collection || map then we should have hit the end of the stack
+				if(!attributeNameQueue.isEmpty()){
+					throw new BadKeyPathException("ERROR: the field named "+attributeName
+							+" is not the last element of the keypath. Only arrays,collections, maps, and Storables can be used as intermediary path elements.");
+				}
+				sqlBuilder.append(" WHERE ");
+				sqlBuilder.append(alias);
+				sqlBuilder.append(".");
+				sqlBuilder.append(attributeName);
+				sqlBuilder.append(comparitor);
 			}
+			currentClass = attributeClass;
+		}
+		String sql = sqlBuilder.toString();
+
+
+		SQLiteDatabase theDb = this.theHelper.getReadableDatabase();
+		Cursor theCursor = theDb.rawQuery(sql, null);
+		HashSet<ORMStorable> results = new HashSet<ORMStorable>();
+		try {
+			while(theCursor.moveToNext()){
+				ORMStorable aStorable = KVKitORM.getInstance().buildStorableFromRecord(theCursor, (Class<? extends ORMStorable>) aType);
+				ORMStorable existingStorable = this.findExistingStorable(aStorable.getUUID());
+				if(existingStorable == null){
+					this.addExistingStorable(aStorable);
+				}
+				else{
+					aStorable = existingStorable;
+				}
+				results.add(aStorable);
+			}
+		} catch (Exception e) {
+			throw new KVKitORMException(e);
 		}
 
-		StringBuilder queryBuilder = new StringBuilder();
-		queryBuilder.append(sqlBeginClause);
-		queryBuilder.append(aliasBuilder);
-		if(attributeName != null){
-		queryBuilder.append(" WHERE ");
-			if(whereBuilder.length() > 0){
-				queryBuilder.append(whereBuilder);
-				queryBuilder.append(" AND ");
-			}
-			queryBuilder.append(alias);
-			queryBuilder.append(".");
-			queryBuilder.append(attributeName);
-			queryBuilder.append(comparitor);
-		}
-		return queryBuilder.toString();
+
+		return new ArrayList<ORMStorable>(results);
 	}
-	
-	
-	
+
 	public ArrayList<ORMStorable> get(ORMStorable aTemplate, String orderByAttributeName) throws KVKitORMException{
 		if (Looper.myLooper() != null && Looper.myLooper() == Looper.getMainLooper()) {
 			throw new KVKitOnMainThreadException();
 		}
 		HashMap<String,Field>instanceFields = new HashMap<String,Field>();
 		SQLiteDatabase theDb = theHelper.getReadableDatabase();
-		
-		
+
+
 		ArrayList<Field> ignoreFields = new ArrayList<Field>();
 		try {
 			Field hiddenStorableField = ORMStorable.class.getDeclaredField("tablesExist");
@@ -553,13 +547,13 @@ public class KVKitORM {
 				}
 				String tableName = currentClass.getCanonicalName().replace('.', '_');
 				aliasBuilder.append(tableName);
-	
+
 				alias = (""+(char)currentChar) +numForAlias;
 				aliasBuilder.append(" ");
 				aliasBuilder.append(alias);
 				inheritanceList.add(alias);
 			}
-			
+
 			if(currentClass.equals(ORMStorable.class)){
 				//System.out.println("at storable class");
 				continue;
@@ -589,11 +583,11 @@ public class KVKitORM {
 						fieldBuilder.append('.');
 						fieldBuilder.append(fieldName);
 						instanceFields.put(fieldName, aField);
-						
+
 						Object aValue = aField.get(aTemplate);
 						//System.out.println("value type: "+aField.getType());
 						if(aValue != null && alias != null){
-							
+
 							if(appendAnd || inheritanceList.size() > 1){//isn't the first portion of the where clause
 								whereBuilder.append(" AND ");
 							}
@@ -661,9 +655,9 @@ public class KVKitORM {
 				}//end of field has value
 			}//end of field iteration
 		}//end of class iteration
-		
+
 		StringBuilder joinBuilder = new StringBuilder();
-		
+
 		for(int i = 1; i < inheritanceList.size(); i++){
 			if(i != 1){
 				joinBuilder.append(" AND ");
@@ -677,7 +671,7 @@ public class KVKitORM {
 		//System.out.println(selectBuilder.toString());
 		//System.out.println(fieldBuilder.toString());
 		//System.out.println(joinBuilder.toString());
-		
+
 		selectBuilder.append(fieldBuilder);
 		selectBuilder.append(" FROM ");
 		selectBuilder.append(aliasBuilder);
@@ -691,9 +685,9 @@ public class KVKitORM {
 		}
 		selectBuilder.append(joinBuilder);
 		String sql = selectBuilder.toString();
-		
-		
-		
+
+
+
 		String[] parameterList =  new String[bindList.size()];
 		for(int i = 0; i < bindList.size(); i++){
 			parameterList[i] = bindList.get(i);
@@ -704,7 +698,7 @@ public class KVKitORM {
 		//System.out.println("parameters: "+Arrays.toString(parameterList));
 		Cursor resultCursor = theDb.rawQuery(sql, parameterList);
 		//System.out.println("number results: "+resultCursor.getCount());
-		
+
 		ArrayList<ORMStorable> storables = new ArrayList<ORMStorable>();
 		//column names match field names
 		String[] columnNames = resultCursor.getColumnNames();
@@ -810,7 +804,7 @@ public class KVKitORM {
 				for(Field storableFieldToLoad : neededChildren){
 					aStorable.load(theDb, storableFieldToLoad);
 				}
-				*/
+				 */
 				storables.add(aStorable);
 			} catch (Exception e) {
 				e.printStackTrace();
@@ -873,7 +867,7 @@ public class KVKitORM {
 		}
 		return result;
 	}
-	
+
 	public void close(){
 		theHelper.close();
 	}
