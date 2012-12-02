@@ -22,6 +22,7 @@
  */
 package org.quickconnectfamily.kvkit.orm;
 
+@SuppressWarnings("serial")
 public class KVKitClassConfigurationException extends Exception {
 	public KVKitClassConfigurationException(String detailMessage) {
 		super(detailMessage);

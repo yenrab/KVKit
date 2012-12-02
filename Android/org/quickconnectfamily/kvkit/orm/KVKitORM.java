@@ -30,7 +30,6 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.sql.Timestamp;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
@@ -38,7 +37,6 @@ import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.Map;
 import java.util.Queue;
-import java.util.Stack;
 import java.util.WeakHashMap;
 
 
@@ -131,26 +129,14 @@ public class KVKitORM {
 		ORMStorable foundStorable = null;
 		WeakReference<ORMStorable> aReference = this.loadedStorables.get(aUUID);
 		if(aReference != null){
-			//System.out.println("found storable");
 			foundStorable = aReference.get();
 		}
-		//else{
-		//System.out.println("didn't find storable");
-		//}
 		return foundStorable;
 	}
 
 	private void addExistingStorable(ORMStorable aStorable) {
-		//System.out.println("adding storable: "+aStorable.getUUID());
 		WeakReference<ORMStorable> aReference = new WeakReference<ORMStorable>(aStorable);
 		this.loadedStorables.put(aStorable.getUUID(), aReference);
-	}
-	private void removeExistingStorable(ORMStorable aStorable){
-		//System.out.println("removing from pool: "+aStorable.getUUID());
-		WeakReference<ORMStorable> removed = this.loadedStorables.remove(aStorable.getUUID());
-		if(removed != null){
-			removed.clear();
-		}
 	}
 
 	public void beginMultiStore(){
@@ -270,6 +256,10 @@ public class KVKitORM {
 			try{
 				for(ORMStorable storableToRemove : found){
 					storableToRemove.remove(theDb);
+					WeakReference<ORMStorable> removed = this.loadedStorables.get(aStorable.getUUID());
+					if(removed.get() == null){
+						this.loadedStorables.remove(aStorable.getUUID());
+					}
 				}
 				theDb.setTransactionSuccessful();
 			}
@@ -454,7 +444,6 @@ public class KVKitORM {
 
 			}
 			else if(!attributeClass.isArray()){
-				//if !Storable || not Collection || map then we should have hit the end of the stack
 				if(!attributeNameQueue.isEmpty()){
 					throw new BadKeyPathException("ERROR: the field named "+attributeName
 							+" is not the last element of the keypath. Only arrays,collections, maps, and Storables can be used as intermediary path elements.");
@@ -475,6 +464,7 @@ public class KVKitORM {
 		HashSet<ORMStorable> results = new HashSet<ORMStorable>();
 		try {
 			while(theCursor.moveToNext()){
+				@SuppressWarnings("unchecked")
 				ORMStorable aStorable = KVKitORM.getInstance().buildStorableFromRecord(theCursor, (Class<? extends ORMStorable>) aType);
 				ORMStorable existingStorable = this.findExistingStorable(aStorable.getUUID());
 				if(existingStorable == null){

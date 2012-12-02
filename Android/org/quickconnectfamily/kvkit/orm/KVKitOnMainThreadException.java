@@ -22,6 +22,7 @@
  */
 package org.quickconnectfamily.kvkit.orm;
 
+@SuppressWarnings("serial")
 public class KVKitOnMainThreadException extends RuntimeException {
 
 	public KVKitOnMainThreadException() {

@@ -31,7 +31,6 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.sql.Date;
 import java.util.AbstractCollection;
-import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -46,10 +45,8 @@ import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.os.Looper;
 
+@SuppressWarnings("serial")
 public class ORMStorable implements Storable{
-	/**
-	 * 
-	 */
 	private String theUUID = null;
 	private static HashMap<Class<?>,Boolean> tablesExist = new HashMap<Class<?>,Boolean>();
 	
@@ -107,14 +104,6 @@ public class ORMStorable implements Storable{
 				createTableBuilder.append(" (");
 			}
 			
-			
-			Iterator<String> iterator = theAttributes.keySet().iterator();  
-			   //System.out.println("existing attributes");
-			while (iterator.hasNext()) {  
-			   String key = iterator.next().toString();  
-			   
-			   //System.out.println(key + " " + value);  
-			} 
 			Set<String> attributeNames = theAttributes.keySet();
 			Iterator<String> namesIt = attributeNames.iterator();
 			while(namesIt.hasNext()){
@@ -269,6 +258,7 @@ public class ORMStorable implements Storable{
 						}
 					}
 					else if(value instanceof Map){
+						@SuppressWarnings("unchecked")
 						Map<String,Object> valueMap = (Map<String,Object>)value;
 						Set<Map.Entry<String, Object>> theEntries = valueMap.entrySet();
 						Iterator<Map.Entry<String, Object>> entryIt = theEntries.iterator();
@@ -415,13 +405,11 @@ public class ORMStorable implements Storable{
 		int numRecords = theCursor.getCount();
 		if(numRecords > 0){
 			StringBuilder whereBuilder = new StringBuilder();
-			String[] childUUIDs = new String[theCursor.getCount()];
 			int cnt = 0;
 			while(theCursor.moveToNext()){
 				if(cnt != 0){
 					whereBuilder.append(" OR");
 				}
-				String childUUID = theCursor.getString(0);
 				whereBuilder.append(" id=?");
 				cnt++;
 			}
@@ -476,6 +464,7 @@ public class ORMStorable implements Storable{
 					else if(Map.class.isAssignableFrom(aField.getType())){
 						Map<?,?> aMap = (Map<?,?>)aField.get(this);
 						Set<?> keysAndValues = aMap.entrySet();
+						@SuppressWarnings("unchecked")
 						Iterator<Entry<?,?>> kvIt = (Iterator<Entry<?,?>>) keysAndValues.iterator();
 						while(kvIt.hasNext()){
 							Entry<?,?> anEntry = kvIt.next();
@@ -636,6 +625,7 @@ public class ORMStorable implements Storable{
 		KVKitORM.getInstance().load(this, anAttribute);
 	}
 	
+	@SuppressWarnings({ "rawtypes", "unchecked" })
 	protected final void load(SQLiteDatabase theDb, Field anAttribute) throws KVKitORMException{
 		if (Looper.myLooper() != null && Looper.myLooper() == Looper.getMainLooper()) {
 			throw new KVKitOnMainThreadException();
@@ -816,6 +806,7 @@ public class ORMStorable implements Storable{
 	}
 
 
+	@SuppressWarnings({ "rawtypes", "unchecked" })
 	private void buildMulitAttributeElement(SQLiteDatabase theDb,
 			Field anAttribute, String attributeName,
 			String parentStorableTableName, Cursor theCursor,
