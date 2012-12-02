@@ -257,7 +257,7 @@ public class KVKitORM {
 				for(ORMStorable storableToRemove : found){
 					storableToRemove.remove(theDb);
 					WeakReference<ORMStorable> removed = this.loadedStorables.get(aStorable.getUUID());
-					if(removed.get() == null){
+					if(removed != null && removed.get() == null){
 						this.loadedStorables.remove(aStorable.getUUID());
 					}
 				}
