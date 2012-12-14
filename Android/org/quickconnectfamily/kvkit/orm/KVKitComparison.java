@@ -33,9 +33,10 @@ public class KVKitComparison {
 	
 	public static KVKitComparison  build(Object ...elements){
 		//need to do validity check here before proceeding.
-		KVKitComparison aComparison = new KVKitComparison();
-		aComparison.comparisonList = elements;
-		return aComparison;
+		//KVKitComparison aComparison = new KVKitComparison();
+		//aComparison.comparisonList = elements;
+		//return aComparison;
+		return null;
 	}
 	
 }
